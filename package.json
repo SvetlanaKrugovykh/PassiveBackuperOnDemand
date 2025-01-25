@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "fastify-plugin": "^5.0.1",
+    "fs": "^0.0.1-security",
+    "http-errors": "^2.0.0",
+    "ip-range-check": "^0.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "path": "^0.12.7"
+  }
+}
