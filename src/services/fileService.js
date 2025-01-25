@@ -4,6 +4,8 @@ require('dotenv').config()
 
 module.exports.fetchFiles = async (queries) => {
   const results = []
+  const TEMP_CATALOG = process.env.TEMP_CATALOG
+  const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE) || 1048576
 
   for (const query of queries) {
     const { directory, pattern } = query
@@ -22,21 +24,37 @@ module.exports.fetchFiles = async (queries) => {
           const content = await fs.readFile(filePath)
 
           const fileSize = Buffer.byteLength(content, 'base64')
-          const chunkSize = parseInt(process.env.CHUNK_SIZE) || 1048576
-          const numChunks = Math.ceil(fileSize / chunkSize)
+          const numChunks = Math.ceil(fileSize / CHUNK_SIZE)
 
           if (numChunks <= 1) {
+            const filePath = path.join(TEMP_CATALOG, `${file}`)
+            await fs.writeFile(filePath, content)
             return {
               fileName: file,
               content: content.toString('base64')
             }
           } else {
-            const chunk = content.slice(0, chunkSize)
+            const firstChunk = content.slice(0, CHUNK_SIZE)
+            const firstChunkPath = path.join(TEMP_CATALOG, `${file}_chunk_1`)
+            await fs.writeFile(firstChunkPath, firstChunk)
+
+            const chunks = []
+            for (let i = 1; i < numChunks; i++) {
+              const chunkContent = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+              const chunkPath = path.join(TEMP_CATALOG, `${file}_chunk_${i + 1}`)
+              await fs.writeFile(chunkPath, chunkContent)
+              chunks.push({
+                fileName: file,
+                chunkId: i + 1,
+                numChunks,
+                chunkPath
+              })
+            }
+
             return {
               fileName: file,
-              chunkId: 1,
-              numChunks,
-              chunkContent: chunk.toString('base64')
+              firstChunkPath,
+              chunks
             }
           }
         })
