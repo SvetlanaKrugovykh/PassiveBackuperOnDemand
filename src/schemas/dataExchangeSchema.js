@@ -5,28 +5,36 @@ module.exports = {
   headers: {
     type: 'object',
     properties: {
-      Authorization: { type: 'string' }
+      Authorization: { type: 'string' },
     },
-    required: ['Authorization']
+    required: ['Authorization'],
   },
   body: {
     type: 'object',
     properties: {
       queries: {
         type: 'array',
-        items: { type: 'string' }
-      }
+        items: {
+          type: 'object',
+          properties: {
+            directory: { type: 'string' },
+            pattern: { type: 'string' },
+          },
+          required: ['directory', 'pattern'], // Указываем обязательные поля
+        },
+      },
     },
-    required: ['queries']
+    required: ['queries'], // Поле queries обязательно в теле запроса
   },
   response: {
     201: {
       description: 'Successful response',
       type: 'object',
       properties: {
-        success: { type: 'boolean' }
+        success: { type: 'boolean' },
+        results: { type: 'array' },
       },
-      required: ['success']
+      required: ['success'],
     },
     500: {
       description: 'Internal server error',
@@ -34,9 +42,9 @@ module.exports = {
       properties: {
         statusCode: { type: 'integer' },
         error: { type: 'string' },
-        message: { type: 'string' }
+        message: { type: 'string' },
       },
-      required: ['statusCode', 'error', 'message'] // Добавлено для уточнения структуры ошибки
-    }
-  }
+      required: ['statusCode', 'error', 'message'],
+    },
+  },
 }
