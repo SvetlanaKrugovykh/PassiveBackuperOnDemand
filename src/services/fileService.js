@@ -71,22 +71,18 @@ module.exports.fetchFiles = async (queries) => {
 
 
 module.exports.fetchChunk = async (fileName, chunkId) => {
-  const chunkSize = parseInt(process.env.CHUNK_SIZE) || 1048576
-  const tempDirectory = process.env.TEMP_CATALOG
+  const TEMP_CATALOG = process.env.TEMP_CATALOG
 
   try {
-    const filePath = path.join(tempDirectory, fileName)
-    const stats = fs.statSync(filePath)
+    const filePath = path.join(TEMP_CATALOG, `${fileName}_chunk_${chunkId}`)
 
-    const start = (chunkId - 1) * chunkSize
-    const end = Math.min(start + chunkSize, stats.size)
+    const content = await fs.readFile(filePath)
 
-    const buffer = Buffer.alloc(end - start)
-    const fd = fs.openSync(filePath, 'r')
-    fs.readSync(fd, buffer, 0, buffer.length, start)
-    fs.closeSync(fd)
-
-    return { fileName, chunkId, content: buffer.toString('base64') }
+    return {
+      fileName,
+      chunkId,
+      content: content.toString('base64')
+    }
   } catch (err) {
     console.error(err)
     return null
