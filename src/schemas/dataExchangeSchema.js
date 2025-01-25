@@ -20,11 +20,11 @@ module.exports = {
             directory: { type: 'string' },
             pattern: { type: 'string' },
           },
-          required: ['directory', 'pattern'], // Указываем обязательные поля
+          required: ['directory', 'pattern'],
         },
       },
     },
-    required: ['queries'], // Поле queries обязательно в теле запроса
+    required: ['queries'],
   },
   response: {
     201: {
