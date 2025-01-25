@@ -28,10 +28,8 @@ async function authPlugin(fastify, _ = {}) {
     }
     if (authorization) {
       try {
-        //const decoded = await authService.checkAccessToken(authorization)
         request.auth = {
           token: authorization,
-          //clientId: decoded.clientId
         }
       } catch (e) {
         console.log(e)

@@ -12,10 +12,12 @@ module.exports = {
   body: {
     type: 'object',
     properties: {
-      reqType: { type: 'string' },
-      text: { type: 'string' }
+      queries: {
+        type: 'array',
+        items: { type: 'string' }
+      }
     },
-    required: ['reqType', 'text']
+    required: ['queries']
   },
   response: {
     201: {
@@ -23,7 +25,8 @@ module.exports = {
       type: 'object',
       properties: {
         success: { type: 'boolean' }
-      }
+      },
+      required: ['success']
     },
     500: {
       description: 'Internal server error',
@@ -32,7 +35,8 @@ module.exports = {
         statusCode: { type: 'integer' },
         error: { type: 'string' },
         message: { type: 'string' }
-      }
+      },
+      required: ['statusCode', 'error', 'message'] // Добавлено для уточнения структуры ошибки
     }
   }
 }
