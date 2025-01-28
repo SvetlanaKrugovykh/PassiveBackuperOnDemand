@@ -39,7 +39,7 @@ module.exports.fetchFiles = async (queries) => {
             await fs.writeFile(firstChunkPath, firstChunk)
 
             const chunks = []
-            for (let i = 1; i < numChunks; i++) {
+            for (let i = 0; i < numChunks; i++) {
               const chunkContent = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
               const chunkPath = path.join(TEMP_CATALOG, `${file}_chunk_${i + 1}`)
               await fs.writeFile(chunkPath, chunkContent)
