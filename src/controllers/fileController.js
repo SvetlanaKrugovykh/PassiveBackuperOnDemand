@@ -50,3 +50,18 @@ module.exports.confirmChunk = async function (req, reply) {
   }
 }
 
+module.exports.confirmFileDeletion = async function (req, reply) {
+  const { fileName } = req.body
+
+  try {
+    const result = await fileService.confirmFileDeletion(fileName)
+
+    if (result) {
+      reply.send(result)
+    } else {
+      reply.code(404).send({ success: false, message: 'File not found.' })
+    }
+  } catch (error) {
+    reply.code(500).send({ success: false, message: 'Internal server error.' })
+  }
+}

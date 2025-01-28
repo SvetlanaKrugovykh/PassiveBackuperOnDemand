@@ -33,6 +33,21 @@ module.exports = (fastify, _opts, done) => {
     schema: dataChunkSchema
   })
 
+  fastify.route({
+    method: 'POST',
+    url: '/confirm-file',
+    handler: fileController.confirmFileDeletion,
+    preHandler: [isAuthorizedGuard],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          fileName: { type: 'string' }
+        }
+      }
+    }
+  })
+
   done()
 }
 

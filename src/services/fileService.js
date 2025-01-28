@@ -108,3 +108,20 @@ module.exports.confirmChunk = async function (fileName, chunkId) {
   }
 }
 
+module.exports.confirmFileDeletion = async function (fileName) {
+  const TEMP_CATALOG = process.env.TEMP_CATALOG
+
+  try {
+    const filePath = path.join(TEMP_CATALOG, fileName)
+    await fs.access(filePath)
+    await fs.unlink(filePath)
+
+    return {
+      fileName,
+      content: 'delete confirmed'
+    }
+  } catch (error) {
+    console.error(`Error confirming file deletion: ${error.message}`)
+    return false
+  }
+}
