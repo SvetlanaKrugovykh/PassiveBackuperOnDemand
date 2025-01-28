@@ -88,3 +88,23 @@ module.exports.fetchChunk = async (fileName, chunkId) => {
     return null
   }
 }
+
+module.exports.confirmChunk = async function (fileName, chunkId) {
+  const TEMP_CATALOG = process.env.TEMP_CATALOG
+
+  try {
+    const chunkPath = path.join(TEMP_CATALOG, `${fileName}_chunk_${chunkId}`)
+    await fs.access(chunkPath)
+    await fs.unlink(chunkPath)
+
+    return {
+      fileName,
+      chunkId,
+      content: 'delete confirmed'
+    }
+  } catch (error) {
+    console.error(`Error confirming chunk: ${error.message}`)
+    return false
+  }
+}
+

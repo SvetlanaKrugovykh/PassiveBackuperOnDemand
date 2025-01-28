@@ -1,6 +1,6 @@
 const fileService = require('../services/fileService')
 
-module.exports.getFiles = async (request, reply) => {
+module.exports.getFiles = async function (request, reply) {
   try {
     const { queries } = request.body
     if (!Array.isArray(queries)) {
@@ -14,7 +14,7 @@ module.exports.getFiles = async (request, reply) => {
   }
 }
 
-module.exports.fetchChunk = async (request, reply) => {
+module.exports.fetchChunk = async function (request, reply) {
   try {
     const { fileName, chunkId } = request.body
 
@@ -33,3 +33,20 @@ module.exports.fetchChunk = async (request, reply) => {
     reply.status(500).send({ error: 'Error processing request', details: error.message })
   }
 }
+
+module.exports.confirmChunk = async function (req, reply) {
+  const { fileName, chunkId } = req.body
+
+  try {
+    const result = await fileService.confirmChunk(fileName, chunkId)
+
+    if (result) {
+      reply.send(result)
+    } else {
+      reply.code(404).send({ success: false, message: 'Chunk not found.' })
+    }
+  } catch (error) {
+    reply.code(500).send({ success: false, message: 'Internal server error.' })
+  }
+}
+

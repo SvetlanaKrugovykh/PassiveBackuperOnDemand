@@ -25,6 +25,14 @@ module.exports = (fastify, _opts, done) => {
     schema: dataChunkSchema
   })
 
+  fastify.route({
+    method: 'POST',
+    url: '/confirm-chunk',
+    handler: fileController.confirmChunk,
+    preHandler: [isAuthorizedGuard],
+    schema: dataChunkSchema
+  })
+
   done()
 }
 
