@@ -5,7 +5,7 @@ const Service = require('node-windows').Service;
 const svc = new Service({
   name: 'customBackuper',
   description: 'Custom Backuper service',
-  script: 'D:\\01_Project_JS_NodeJS\\!!!_003_Passive_Backuper_Server\\server.js',
+  script: process.env.START_SCRIPT,
   logpath: process.env.LOG_DIR,
   logfile: process.env.LOG_FILE,
   nodeOptions: [
