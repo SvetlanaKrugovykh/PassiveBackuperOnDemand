@@ -1,11 +1,13 @@
 const fs = require('fs').promises
 const path = require('path')
+const { createReadStream, createWriteStream } = require('fs')
 require('dotenv').config()
 
 module.exports.fetchFiles = async (queries) => {
   const results = []
   const TEMP_CATALOG = process.env.TEMP_CATALOG
   const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE) || 1048576
+  const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024 // 2 GiB
 
   for (const query of queries) {
     const { directory, pattern } = query
@@ -21,28 +23,54 @@ module.exports.fetchFiles = async (queries) => {
       const fileData = await Promise.all(
         matchedFiles.map(async (file) => {
           const filePath = path.join(directory, file)
-          const content = await fs.readFile(filePath)
+          const stats = await fs.stat(filePath)
+          const fileSize = stats.size
 
-          const fileSize = Buffer.byteLength(content, 'base64')
-          const numChunks = Math.ceil(fileSize / CHUNK_SIZE)
+          if (fileSize <= MAX_FILE_SIZE) {
+            const content = await fs.readFile(filePath)
+            const numChunks = Math.ceil(fileSize / CHUNK_SIZE)
 
-          if (numChunks <= 1) {
-            const filePath = path.join(TEMP_CATALOG, `${file}`)
-            await fs.writeFile(filePath, content)
-            return {
-              fileName: file,
-              content: content.toString('base64')
+            if (numChunks <= 1) {
+              const tempFilePath = path.join(TEMP_CATALOG, `${file}`)
+              await fs.writeFile(tempFilePath, content)
+              return {
+                fileName: file,
+                content: content.toString('base64')
+              }
+            } else {
+              const chunks = []
+              for (let i = 0; i < numChunks; i++) {
+                const chunkContent = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+                const chunkPath = path.join(TEMP_CATALOG, `${file}_chunk_${i + 1}`)
+                await fs.writeFile(chunkPath, chunkContent)
+                chunks.push({
+                  fileName: file,
+                  chunkId: i + 1,
+                  numChunks,
+                  chunkPath
+                })
+              }
+
+              return {
+                fileName: file,
+                chunks
+              }
             }
           } else {
-            const firstChunk = content.slice(0, CHUNK_SIZE)
-            const firstChunkPath = path.join(TEMP_CATALOG, `${file}_chunk_1`)
-            await fs.writeFile(firstChunkPath, firstChunk)
-
+            const numChunks = Math.ceil(fileSize / CHUNK_SIZE)
             const chunks = []
             for (let i = 0; i < numChunks; i++) {
-              const chunkContent = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
               const chunkPath = path.join(TEMP_CATALOG, `${file}_chunk_${i + 1}`)
-              await fs.writeFile(chunkPath, chunkContent)
+              const readStream = createReadStream(filePath, {
+                start: i * CHUNK_SIZE,
+                end: (i + 1) * CHUNK_SIZE - 1
+              })
+              const writeStream = createWriteStream(chunkPath)
+              await new Promise((resolve, reject) => {
+                readStream.pipe(writeStream)
+                  .on('finish', resolve)
+                  .on('error', reject)
+              })
               chunks.push({
                 fileName: file,
                 chunkId: i + 1,
@@ -53,7 +81,6 @@ module.exports.fetchFiles = async (queries) => {
 
             return {
               fileName: file,
-              firstChunkPath,
               chunks
             }
           }
