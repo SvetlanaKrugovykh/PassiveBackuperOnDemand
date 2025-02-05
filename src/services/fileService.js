@@ -1,6 +1,7 @@
 const fs = require('fs').promises
 const path = require('path')
 const { createReadStream, createWriteStream } = require('fs')
+const archiver = require('archiver')
 require('dotenv').config()
 
 module.exports.fetchFiles = async (queries) => {
@@ -10,7 +11,7 @@ module.exports.fetchFiles = async (queries) => {
   const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024 // 2 GiB
 
   for (const query of queries) {
-    const { directory, pattern } = query
+    const { directory, pattern, zip } = query
 
     try {
       const regex = new RegExp(
@@ -26,10 +27,19 @@ module.exports.fetchFiles = async (queries) => {
           const stats = await fs.stat(filePath)
           const fileSize = stats.size
 
-          if (fileSize <= MAX_FILE_SIZE) {
-            const content = await fs.readFile(filePath)
-            const numChunks = Math.ceil(fileSize / CHUNK_SIZE)
+          let finalFilePath = filePath
+          if (zip) {
+            const zipFilePath = path.join(TEMP_CATALOG, `${file}.zip`)
+            await zipFile(filePath, zipFilePath)
+            finalFilePath = zipFilePath
+          }
 
+          const finalStats = await fs.stat(finalFilePath)
+          const finalFileSize = finalStats.size
+          const numChunks = Math.ceil(finalFileSize / CHUNK_SIZE)
+
+          if (finalFileSize <= MAX_FILE_SIZE) {
+            const content = await fs.readFile(finalFilePath)
             if (numChunks <= 1) {
               const tempFilePath = path.join(TEMP_CATALOG, `${file}`)
               await fs.writeFile(tempFilePath, content)
@@ -57,11 +67,11 @@ module.exports.fetchFiles = async (queries) => {
               }
             }
           } else {
-            const numChunks = Math.ceil(fileSize / CHUNK_SIZE)
+            const numChunks = Math.ceil(finalFileSize / CHUNK_SIZE)
             const chunks = []
             for (let i = 0; i < numChunks; i++) {
               const chunkPath = path.join(TEMP_CATALOG, `${file}_chunk_${i + 1}`)
-              const readStream = createReadStream(filePath, {
+              const readStream = createReadStream(finalFilePath, {
                 start: i * CHUNK_SIZE,
                 end: (i + 1) * CHUNK_SIZE - 1
               })
@@ -94,6 +104,22 @@ module.exports.fetchFiles = async (queries) => {
   }
 
   return results
+}
+
+async function zipFile(inputPath, outputPath) {
+  return new Promise((resolve, reject) => {
+    const output = createWriteStream(outputPath)
+    const archive = archiver('zip', {
+      zlib: { level: 9 }
+    })
+
+    output.on('close', resolve)
+    archive.on('error', reject)
+
+    archive.pipe(output)
+    archive.file(inputPath, { name: path.basename(inputPath) })
+    archive.finalize()
+  })
 }
 
 
