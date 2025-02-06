@@ -13,6 +13,7 @@ module.exports.fetchFiles = async (queries) => {
   for (const query of queries) {
     const { directory, pattern, zip } = query
     const isZip = zip === true || zip === 'true'
+    if (Number(process.env.DEBUG_LEVEL) > 5) console.log(`zip is ${zip} => ${isZip}`)
 
     try {
       const regex = new RegExp(
