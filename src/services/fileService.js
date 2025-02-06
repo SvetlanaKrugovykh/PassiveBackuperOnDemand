@@ -7,7 +7,7 @@ require('dotenv').config()
 module.exports.fetchFiles = async (queries) => {
   const results = []
   const TEMP_CATALOG = process.env.TEMP_CATALOG
-  const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE) || 1048576
+  const CHUNK_SIZE = parseInt(process.env.CHUNK_SIZE) || 20971520
   const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024 // 2 GiB
 
   for (const query of queries) {
