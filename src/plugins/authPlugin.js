@@ -36,7 +36,7 @@ async function authPlugin(fastify, _ = {}) {
       }
       const decodedToken = await authService.checkAccessToken(authorization)
       if (decodedToken) {
-        console.log('decodedToken:', decodedToken)
+        if (Number(process.env.DEBUG_LEVEL) > 5) console.log('decodedToken:', decodedToken)
       }
     }
   })

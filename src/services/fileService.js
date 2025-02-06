@@ -12,6 +12,7 @@ module.exports.fetchFiles = async (queries) => {
 
   for (const query of queries) {
     const { directory, pattern, zip } = query
+    const isZip = zip === true || zip === 'true'
 
     try {
       const regex = new RegExp(
@@ -26,9 +27,10 @@ module.exports.fetchFiles = async (queries) => {
           const filePath = path.join(directory, file)
           const stats = await fs.stat(filePath)
           const fileSize = stats.size
+          console.log(`File ${filePath} size: ${fileSize}`)
 
           let finalFilePath = filePath
-          if (zip) {
+          if (isZip) {
             const zipFilePath = path.join(TEMP_CATALOG, `${file}.zip`)
             await zipFile(filePath, zipFilePath)
             finalFilePath = zipFilePath
