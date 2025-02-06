@@ -23,8 +23,7 @@ module.exports.fetchFiles = async (queries) => {
       const matchedFiles = await findFiles(directory, regex)
 
       const fileData = await Promise.all(
-        matchedFiles.map(async (file) => {
-          const filePath = path.join(directory, file)
+        matchedFiles.map(async (filePath) => {
           const stats = await fs.stat(filePath)
           const fileSize = stats.size
           console.log(`File ${filePath} size: ${fileSize}`)
@@ -32,7 +31,7 @@ module.exports.fetchFiles = async (queries) => {
           let finalFilePath = filePath
           if (isZip) {
             console.log(`Zipping file ${filePath}`)
-            const zipFilePath = path.join(TEMP_CATALOG, `${file}.zip`)
+            const zipFilePath = path.join(TEMP_CATALOG, `${path.basename(filePath)}.zip`)
             await zipFile(filePath, zipFilePath)
             finalFilePath = zipFilePath
           }
@@ -44,20 +43,20 @@ module.exports.fetchFiles = async (queries) => {
           if (finalFileSize <= MAX_FILE_SIZE) {
             const content = await fs.readFile(finalFilePath)
             if (numChunks <= 1) {
-              const tempFilePath = path.join(TEMP_CATALOG, `${file}`)
+              const tempFilePath = path.join(TEMP_CATALOG, path.basename(finalFilePath))
               await fs.writeFile(tempFilePath, content)
               return {
-                fileName: file,
+                fileName: path.basename(finalFilePath),
                 content: content.toString('base64')
               }
             } else {
               const chunks = []
               for (let i = 0; i < numChunks; i++) {
                 const chunkContent = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
-                const chunkPath = path.join(TEMP_CATALOG, `${file}_chunk_${i + 1}`)
+                const chunkPath = path.join(TEMP_CATALOG, `${path.basename(finalFilePath)}_chunk_${i + 1}`)
                 await fs.writeFile(chunkPath, chunkContent)
                 chunks.push({
-                  fileName: file,
+                  fileName: path.basename(finalFilePath),
                   chunkId: i + 1,
                   numChunks,
                   chunkPath
@@ -65,15 +64,14 @@ module.exports.fetchFiles = async (queries) => {
               }
 
               return {
-                fileName: file,
+                fileName: path.basename(finalFilePath),
                 chunks
               }
             }
           } else {
-            const numChunks = Math.ceil(finalFileSize / CHUNK_SIZE)
             const chunks = []
             for (let i = 0; i < numChunks; i++) {
-              const chunkPath = path.join(TEMP_CATALOG, `${file}_chunk_${i + 1}`)
+              const chunkPath = path.join(TEMP_CATALOG, `${path.basename(finalFilePath)}_chunk_${i + 1}`)
               const readStream = createReadStream(finalFilePath, {
                 start: i * CHUNK_SIZE,
                 end: (i + 1) * CHUNK_SIZE - 1
@@ -85,7 +83,7 @@ module.exports.fetchFiles = async (queries) => {
                   .on('error', reject)
               })
               chunks.push({
-                fileName: file,
+                fileName: path.basename(finalFilePath),
                 chunkId: i + 1,
                 numChunks,
                 chunkPath
@@ -93,16 +91,16 @@ module.exports.fetchFiles = async (queries) => {
             }
 
             return {
-              fileName: file,
+              fileName: path.basename(finalFilePath),
               chunks
             }
           }
         })
       )
 
-      results.push({ directory, matchedFiles: fileData })
-    } catch (err) {
-      results.push({ directory, error: err.message })
+      results.push(...fileData)
+    } catch (error) {
+      results.push({ directory, error: error.message })
     }
   }
 
