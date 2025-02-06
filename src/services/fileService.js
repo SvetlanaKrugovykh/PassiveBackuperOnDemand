@@ -1,5 +1,4 @@
-const pLimit = require('p-limit')
-const limit = pLimit(5)
+const limitPromise = import('p-limit').then(mod => mod.default)
 const fs = require('fs').promises
 const path = require('path')
 const { createReadStream, createWriteStream } = require('fs')
@@ -86,8 +85,11 @@ async function zipFile(inputPath, outputPath) {
 }
 
 module.exports.fetchChunk = async (fileName, chunkId) => {
+  const pLimit = await limitPromise
+  const limit = pLimit(5)
+
   return limit(async () => {
-    const TEMP_CATALOG = process.env.TEMP_CATALOG
+    const TEMP_CATALOG = process.env.TEMP_CATALOG;
     const filePath = path.join(TEMP_CATALOG, `${fileName}_chunk_${chunkId}`)
 
     try {
