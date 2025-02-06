@@ -13,7 +13,6 @@ module.exports.fetchFiles = async (queries) => {
   for (const query of queries) {
     const { directory, pattern, zip } = query
     const isZip = zip === true || zip === 'true'
-    if (Number(process.env.DEBUG_LEVEL) > 5) console.log(`zip is ${zip} => ${isZip}`)
 
     try {
       const regex = new RegExp(
@@ -30,7 +29,6 @@ module.exports.fetchFiles = async (queries) => {
 
           let finalFilePath = filePath
           if (isZip) {
-            console.log(`Zipping file ${filePath}`)
             const zipFilePath = path.join(TEMP_CATALOG, `${path.basename(filePath)}.zip`)
             await zipFile(filePath, zipFilePath)
             finalFilePath = zipFilePath
@@ -50,18 +48,19 @@ module.exports.fetchFiles = async (queries) => {
                 content: content.toString('base64')
               }
             } else {
-              const chunks = []
-              for (let i = 0; i < numChunks; i++) {
-                const chunkContent = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
-                const chunkPath = path.join(TEMP_CATALOG, `${path.basename(finalFilePath)}_chunk_${i + 1}`)
-                await fs.writeFile(chunkPath, chunkContent)
-                chunks.push({
-                  fileName: path.basename(finalFilePath),
-                  chunkId: i + 1,
-                  numChunks,
-                  chunkPath
+              const chunks = await Promise.all(
+                Array.from({ length: numChunks }, async (_, i) => {
+                  const chunkContent = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+                  const chunkPath = path.join(TEMP_CATALOG, `${path.basename(finalFilePath)}_chunk_${i + 1}`)
+                  await fs.writeFile(chunkPath, chunkContent)
+                  return {
+                    fileName: path.basename(finalFilePath),
+                    chunkId: i + 1,
+                    numChunks,
+                    chunkPath
+                  }
                 })
-              }
+              )
 
               return {
                 fileName: path.basename(finalFilePath),
@@ -69,26 +68,27 @@ module.exports.fetchFiles = async (queries) => {
               }
             }
           } else {
-            const chunks = []
-            for (let i = 0; i < numChunks; i++) {
-              const chunkPath = path.join(TEMP_CATALOG, `${path.basename(finalFilePath)}_chunk_${i + 1}`)
-              const readStream = createReadStream(finalFilePath, {
-                start: i * CHUNK_SIZE,
-                end: (i + 1) * CHUNK_SIZE - 1
+            const chunks = await Promise.all(
+              Array.from({ length: numChunks }, async (_, i) => {
+                const chunkPath = path.join(TEMP_CATALOG, `${path.basename(finalFilePath)}_chunk_${i + 1}`)
+                const readStream = createReadStream(finalFilePath, {
+                  start: i * CHUNK_SIZE,
+                  end: (i + 1) * CHUNK_SIZE - 1
+                })
+                const writeStream = createWriteStream(chunkPath)
+                await new Promise((resolve, reject) => {
+                  readStream.pipe(writeStream)
+                    .on('finish', resolve)
+                    .on('error', reject)
+                })
+                return {
+                  fileName: path.basename(finalFilePath),
+                  chunkId: i + 1,
+                  numChunks,
+                  chunkPath
+                }
               })
-              const writeStream = createWriteStream(chunkPath)
-              await new Promise((resolve, reject) => {
-                readStream.pipe(writeStream)
-                  .on('finish', resolve)
-                  .on('error', reject)
-              })
-              chunks.push({
-                fileName: path.basename(finalFilePath),
-                chunkId: i + 1,
-                numChunks,
-                chunkPath
-              })
-            }
+            )
 
             return {
               fileName: path.basename(finalFilePath),
@@ -98,7 +98,7 @@ module.exports.fetchFiles = async (queries) => {
         })
       )
 
-      results.push(...fileData)
+      results.push({ directory, matchedFiles: fileData })
     } catch (error) {
       results.push({ directory, error: error.message })
     }
@@ -106,6 +106,7 @@ module.exports.fetchFiles = async (queries) => {
 
   return results
 }
+
 
 async function zipFile(inputPath, outputPath) {
   return new Promise((resolve, reject) => {
