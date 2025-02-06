@@ -1,3 +1,5 @@
+const pLimit = require('p-limit')
+const limit = pLimit(5)
 const fs = require('fs').promises
 const path = require('path')
 const { createReadStream, createWriteStream } = require('fs')
@@ -84,14 +86,33 @@ async function zipFile(inputPath, outputPath) {
 }
 
 module.exports.fetchChunk = async (fileName, chunkId) => {
-  const TEMP_CATALOG = process.env.TEMP_CATALOG
-  try {
+  return limit(async () => {
+    const TEMP_CATALOG = process.env.TEMP_CATALOG
     const filePath = path.join(TEMP_CATALOG, `${fileName}_chunk_${chunkId}`)
-    const content = await fs.readFile(filePath)
-    return { fileName, chunkId, content: content.toString('base64') }
-  } catch (err) {
-    console.error(err)
-    return null
+
+    try {
+      await fs.access(filePath)
+      const stream = createReadStream(filePath)
+      return { fileName, chunkId, stream }
+    } catch (err) {
+      console.error(`Error fetching chunk: ${err.message}`)
+      return null
+    }
+  })
+}
+
+module.exports.fetchChunkWithRetry = async function (fileName, chunkId, retries) {
+  try {
+    const chunkData = await fileService.fetchChunk(fileName, chunkId)
+    return chunkData
+  } catch (error) {
+    if (retries > 0) {
+      console.log(`Retrying fetchChunk for ${fileName} chunk ${chunkId}, attempts left: ${retries}`)
+      return fetchChunkWithRetry(fileName, chunkId, retries - 1)
+    } else {
+      console.error(`Failed to fetch chunk ${chunkId} for file ${fileName} after multiple attempts`)
+      return null
+    }
   }
 }
 

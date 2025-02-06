@@ -22,7 +22,7 @@ module.exports.fetchChunk = async function (request, reply) {
       return reply.status(400).send({ error: 'Invalid input format' })
     }
 
-    const chunkData = await fileService.fetchChunk(fileName, chunkId)
+    const chunkData = await fileService.fetchChunkWithRetry(fileName, chunkId)
 
     if (!chunkData) {
       return reply.status(404).send({ error: 'Chunk not found' })
