@@ -13,6 +13,7 @@ module.exports.fetchFiles = async (queries) => {
   for (const query of queries) {
     const { directory, pattern, zip } = query
     const isZip = zip === true || zip === 'true'
+    console.log(`zip is ${zip} => ${isZip}`)
 
     try {
       const regex = new RegExp(
@@ -31,6 +32,7 @@ module.exports.fetchFiles = async (queries) => {
 
           let finalFilePath = filePath
           if (isZip) {
+            console.log(`Zipping file ${filePath}`)
             const zipFilePath = path.join(TEMP_CATALOG, `${file}.zip`)
             await zipFile(filePath, zipFilePath)
             finalFilePath = zipFilePath
