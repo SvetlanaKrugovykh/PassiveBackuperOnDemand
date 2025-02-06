@@ -20,8 +20,7 @@ module.exports.fetchFiles = async (queries) => {
         '^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$'
       )
 
-      const files = await fs.readdir(directory)
-      const matchedFiles = files.filter(file => regex.test(file))
+      const matchedFiles = await findFiles(directory, regex)
 
       const fileData = await Promise.all(
         matchedFiles.map(async (file) => {
@@ -181,4 +180,18 @@ module.exports.confirmFileDeletion = async function (fileName) {
     console.error(`Error confirming file deletion: ${error.message}`)
     return false
   }
+}
+
+async function findFiles(dir, regex) {
+  let results = []
+  const list = await fs.readdir(dir, { withFileTypes: true })
+  for (const file of list) {
+    const filePath = path.join(dir, file.name)
+    if (file.isDirectory()) {
+      results = results.concat(await findFiles(filePath, regex))
+    } else if (regex.test(file.name)) {
+      results.push(filePath)
+    }
+  }
+  return results
 }
