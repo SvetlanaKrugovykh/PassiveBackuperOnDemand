@@ -17,7 +17,7 @@ module.exports = (fastify, _opts, done) => {
 
   fastify.route({
     method: 'POST',
-    url: '/fetch-сhunk',
+    url: '/fetch-chunk',
     handler: fileController.fetchChunk,
     preHandler: [
       isAuthorizedGuard
