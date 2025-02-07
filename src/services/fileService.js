@@ -85,27 +85,23 @@ async function zipFile(inputPath, outputPath) {
 }
 
 module.exports.fetchChunk = async (fileName, chunkId) => {
-  const pLimit = await limitPromise
-  const limit = pLimit(5)
+  const TEMP_CATALOG = process.env.TEMP_CATALOG
+  const filePath = path.join(TEMP_CATALOG, `${fileName}_chunk_${chunkId}`)
 
-  return limit(async () => {
-    const TEMP_CATALOG = process.env.TEMP_CATALOG;
-    const filePath = path.join(TEMP_CATALOG, `${fileName}_chunk_${chunkId}`)
-
-    try {
-      await fs.access(filePath)
-      const stream = createReadStream(filePath)
-      return { fileName, chunkId, stream }
-    } catch (err) {
-      console.error(`Error fetching chunk: ${err.message}`)
-      return null
-    }
-  })
+  try {
+    await fs.access(filePath)
+    const content = await fs.readFile(filePath)
+    return { fileName, chunkId, content: content.toString('base64') }
+  } catch (err) {
+    console.error(`Error fetching chunk: ${err.message}`)
+    return null
+  }
 }
+
 
 module.exports.fetchChunkWithRetry = async function (fileName, chunkId, retries) {
   try {
-    const chunkData = await fileService.fetchChunk(fileName, chunkId)
+    const chunkData = await module.exports.fetchChunk(fileName, chunkId)
     return chunkData
   } catch (error) {
     if (retries > 0) {
