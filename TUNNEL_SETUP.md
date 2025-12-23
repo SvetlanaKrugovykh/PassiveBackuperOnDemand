@@ -9,7 +9,7 @@ Passive Backuper Server now operates as a **NetGateTunnel Client**. The server r
 ```
 External Clients (Public IP)
         ↓
-[NetGateTunnel Server]  (WHITE_SERVER_HOST:WHITE_SERVER_PORT = 91.220.106.77:8000)
+[NetGateTunnel Server]  (WHITE_SERVER_HOST:WHITE_SERVER_PORT = X.X.X.X:XXXX)
         ↓
 [NetGateTunnel Client]  ← Passive Backuper (this project)
         ↓
@@ -35,7 +35,7 @@ Required tunnel parameters:
 
 ```env
 # NetGateTunnel Client Configuration
-WHITE_SERVER_HOST = 91.220.106.77          # Public IP of tunnel server
+WHITE_SERVER_HOST = X.X.X.X                # Public IP of tunnel server
 WHITE_SERVER_PORT = 8000                   # Port of tunnel server
 AUTH_TOKEN = your-secret-token-here        # Authentication token (must match server)
 TUNNELS = 7111:7111:passive-backuper       # remotePort:localPort:name
@@ -53,7 +53,7 @@ For Passive Backuper:
 
 Result:
 ```
-External client → http://91.220.106.77:7111/get-files (through tunnel)
+External client → http://X.X.X.X:XXXX/get-files (through tunnel)
         ↓
 Tunnel redirects → localhost:7111/get-files (private IP)
 ```
@@ -116,7 +116,7 @@ After successful startup and tunnel connection:
 
 ```bash
 # From public IP, calling through tunnel:
-curl -X POST http://91.220.106.77:7111/get-files \
+curl -X POST http://X.X.X.X:XXXX/get-files \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
