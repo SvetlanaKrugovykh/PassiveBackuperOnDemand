@@ -2,9 +2,18 @@ const fileService = require('../services/fileService')
 
 module.exports.getFiles = async function (request, reply) {
   try {
-    const { queries } = request.body
+    const { queries, senderServerName, serviceName, transferDescription } = request.body
     if (!Array.isArray(queries)) {
       return reply.status(400).send({ error: 'Invalid input format' })
+    }
+
+    // Optionally ensure storage path based on provided metadata
+    if (process.env.STORAGE_ROOT_DIR && senderServerName && serviceName) {
+      const ensured = await fileService.ensureStoragePath(senderServerName, serviceName)
+      if (ensured && Number(process.env.DEBUG_LEVEL) > 0) {
+        console.log(`Storage path ensured: ${ensured}`)
+        if (transferDescription) console.log(`Transfer description: ${transferDescription}`)
+      }
     }
 
     const results = await fileService.fetchFiles(queries)

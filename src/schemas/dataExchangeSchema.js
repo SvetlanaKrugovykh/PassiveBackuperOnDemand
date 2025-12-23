@@ -12,6 +12,9 @@ module.exports = {
   body: {
     type: 'object',
     properties: {
+      senderServerName: { type: 'string' },
+      serviceName: { type: 'string' },
+      transferDescription: { type: 'string' },
       queries: {
         type: 'array',
         items: {

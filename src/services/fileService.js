@@ -5,6 +5,24 @@ const { createReadStream, createWriteStream } = require('fs')
 const archiver = require('archiver')
 require('dotenv').config()
 
+module.exports.ensureStoragePath = async function (senderServerName, serviceName) {
+  const SLASH = process.env.SLASH || path.sep
+  const ROOT = process.env.STORAGE_ROOT_DIR
+
+  if (!ROOT || !senderServerName || !serviceName) return null
+
+  const normalizedRoot = ROOT.endsWith(SLASH) ? ROOT.slice(0, -SLASH.length) : ROOT
+  const storagePath = `${normalizedRoot}${SLASH}${senderServerName}${SLASH}${serviceName}`
+
+  try {
+    await fs.mkdir(storagePath, { recursive: true })
+    return storagePath
+  } catch (err) {
+    console.error(`Error ensuring storage path: ${err.message}`)
+    return null
+  }
+}
+
 module.exports.fetchFiles = async (queries) => {
   const results = []
   const TEMP_CATALOG = process.env.TEMP_CATALOG
