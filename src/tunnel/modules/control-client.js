@@ -111,6 +111,8 @@ class ControlClient extends EventEmitter {
       try {
         const message = JSON.parse(data.toString())
         
+        this.logger.info({ messageType: message.type }, 'Received message from server')
+        
         if (!validateMessage(message)) {
           this.logger.warn({ message }, 'Invalid message received')
           return
@@ -118,12 +120,12 @@ class ControlClient extends EventEmitter {
 
         this.handleMessage(message)
       } catch (error) {
-        this.logger.error({ error }, 'Error handling message')
+        this.logger.error({ error, rawData: data.toString() }, 'Error handling message')
       }
     })
 
-    this.ws.on('close', () => {
-      this.logger.warn('Control connection closed')
+    this.ws.on('close', (code, reason) => {
+      this.logger.warn({ code, reason: reason.toString() }, 'Control connection closed')
       this.authenticated = false
       this.emit('disconnected')
 
@@ -268,6 +270,7 @@ class ControlClient extends EventEmitter {
     }
 
     try {
+      this.logger.debug({ messageType: message.type }, 'Sending message to server')
       this.ws.send(JSON.stringify(message))
       return true
     } catch (error) {
