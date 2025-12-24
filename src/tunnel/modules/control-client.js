@@ -183,6 +183,16 @@ class ControlClient extends EventEmitter {
    */
   handleMessage(message) {
     switch (message.type) {
+      case MESSAGE_TYPES.AUTH_SUCCESS:
+        // Auth success is handled in authenticate() promise
+        this.logger.debug('Auth success message received')
+        break
+
+      case MESSAGE_TYPES.AUTH_FAILED:
+        this.logger.error({ message }, 'Authentication failed')
+        this.emit('authFailed', message)
+        break
+
       case MESSAGE_TYPES.TUNNEL_REGISTERED:
         this.emit('tunnelRegistered', message)
         break

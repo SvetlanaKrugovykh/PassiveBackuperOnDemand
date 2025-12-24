@@ -157,6 +157,14 @@ class TunnelHandler extends EventEmitter {
   }
 
   /**
+   * Handle connection closed notification from server
+   */
+  handleConnectionClosed(connectionId, reason) {
+    this.logger.info({ connectionId, reason }, 'Connection closed by server')
+    this.cleanupConnection(connectionId)
+  }
+
+  /**
    * Cleanup data server
    */
   cleanupDataServer(connectionId) {

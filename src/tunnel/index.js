@@ -117,11 +117,19 @@ class TunnelClient {
       )
     })
 
-    this.controlClient.on('tunnelRegistrationFailed', (result) => {
+    this.controlClient.on('tunnelFailed', (result) => {
       this.logger.error(
         { remotePort: result.remotePort, name: result.name, error: result.error },
         'Failed to register tunnel'
       )
+    })
+
+    this.controlClient.on('newConnection', (connectionId, remotePort, clientAddress) => {
+      this.tunnelHandler.handleNewConnection(connectionId, remotePort, clientAddress)
+    })
+
+    this.controlClient.on('connectionClosed', (connectionId, reason) => {
+      this.tunnelHandler.handleConnectionClosed(connectionId, reason)
     })
 
     this.tunnelHandler.on('error', (error) => {
@@ -138,8 +146,9 @@ class TunnelClient {
         { name: tunnel.name, localPort: tunnel.localPort, remotePort: tunnel.remotePort },
         'Registering tunnel'
       )
-      this.controlClient.registerTunnel(tunnel)
     }
+    // Register all tunnels at once
+    this.controlClient.registerTunnels(this.config.tunnels)
   }
 
   /**
