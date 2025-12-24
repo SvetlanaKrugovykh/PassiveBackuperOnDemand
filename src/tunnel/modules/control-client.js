@@ -13,8 +13,8 @@ const {
   createConnectionClosedMessage,
   createPongMessage,
   validateMessage,
-} = require('../../common/protocol')
-const { retry } = require('../../common/utils')
+} = require('../common/protocol')
+const { retry } = require('../common/utils')
 
 class ControlClient extends EventEmitter {
   constructor(config, logger) {
