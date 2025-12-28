@@ -1,4 +1,5 @@
 const fs = require('fs');
+const sendTelegramMessage = require('./send_telegram');
 const path = require('path');
 const axios = require('axios');
 const cron = require('node-cron');
@@ -16,6 +17,14 @@ const configPath = path.join(__dirname, 'client.config.json');
 
 function loadConfig() {
   return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+}
+
+function getTelegramConfig() {
+  const config = loadConfig();
+  return {
+    botToken: config.telegramBotToken,
+    chatId: config.telegramChatId
+  };
 }
 
 function getDateStr(offset = 0) {
@@ -45,7 +54,7 @@ function findFilesByPattern(directory, pattern, days = [0, -1]) {
   return files;
 }
 
-async function sendFileJob(job) {
+async function sendFileJob(job, telegramConfig) {
   const {
     file,
     serverUrl,
@@ -69,6 +78,7 @@ async function sendFileJob(job) {
   logToFile(`File ${file} sha256: ${hash}`);
   const readStream = fs.createReadStream(file, { highWaterMark: chunkSize });
   let chunkId = 1;
+  let failed = false;
   for await (const chunk of readStream) {
     const b64 = chunk.toString('base64');
     const data = {
@@ -97,6 +107,15 @@ async function sendFileJob(job) {
         logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`);
         if (attempt >= maxRetries) {
           logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`);
+          failed = true;
+          // Send Telegram notification about failure (connection issue)
+          if (telegramConfig.botToken && telegramConfig.chatId) {
+            await sendTelegramMessage(
+              '🚨 <b>File transfer failed</b>!\nClient <b>' + senderServerName + '</b> could not connect to the server for file <b>' + fileName + '</b>. Please check the server status.',
+              telegramConfig.botToken,
+              telegramConfig.chatId
+            );
+          }
           return;
         }
         await new Promise(res => setTimeout(res, 1000 * attempt)); // Exponential backoff
@@ -104,20 +123,30 @@ async function sendFileJob(job) {
     }
     chunkId++;
   }
+  // If all chunks sent and not failed, send success notification
+  if (!failed && telegramConfig.botToken && telegramConfig.chatId) {
+    await sendTelegramMessage(
+      '📦 <b>File transfer complete</b>!\nAll files from client <b>' + senderServerName + '</b> have been successfully delivered to the server.',
+      telegramConfig.botToken,
+      telegramConfig.chatId
+    );
+  }
 }
 
 async function main() {
-  const jobs = loadConfig();
+  const config = loadConfig();
+  const telegramConfig = getTelegramConfig();
+  const jobs = config.jobs || config;
   for (const job of jobs) {
     // Если указан pattern и directory — ищем файлы по маске за сегодня и вчера
     if (job.pattern && job.directory) {
       const files = findFilesByPattern(job.directory, job.pattern, [0, -1]);
       for (const file of files) {
-        await sendFileJob({ ...job, file });
+        await sendFileJob({ ...job, file }, telegramConfig);
       }
     } else if (job.file) {
       // Обычный режим — отправить конкретный файл
-      await sendFileJob(job);
+      await sendFileJob(job, telegramConfig);
     }
   }
 }
