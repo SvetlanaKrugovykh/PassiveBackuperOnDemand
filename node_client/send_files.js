@@ -18,6 +18,33 @@ function loadConfig() {
   return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
 }
 
+function getDateStr(offset = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}_${mm}_${dd}`;
+}
+
+function findFilesByPattern(directory, pattern, days = [0, -1]) {
+  let files = [];
+  for (const day of days) {
+    const dateStr = getDateStr(day);
+    const mask = pattern.replace('{date}', dateStr);
+    // Convert mask to regex
+    const regex = new RegExp('^' + mask.replace(/\./g, '\.').replace(/\*/g, '.*') + '$');
+    if (fs.existsSync(directory)) {
+      for (const file of fs.readdirSync(directory)) {
+        if (regex.test(file)) {
+          files.push(path.join(directory, file));
+        }
+      }
+    }
+  }
+  return files;
+}
+
 async function sendFileJob(job) {
   const {
     file,
@@ -82,7 +109,16 @@ async function sendFileJob(job) {
 async function main() {
   const jobs = loadConfig();
   for (const job of jobs) {
-    await sendFileJob(job);
+    // Если указан pattern и directory — ищем файлы по маске за сегодня и вчера
+    if (job.pattern && job.directory) {
+      const files = findFilesByPattern(job.directory, job.pattern, [0, -1]);
+      for (const file of files) {
+        await sendFileJob({ ...job, file });
+      }
+    } else if (job.file) {
+      // Обычный режим — отправить конкретный файл
+      await sendFileJob(job);
+    }
   }
 }
 
