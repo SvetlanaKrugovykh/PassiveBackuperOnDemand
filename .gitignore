@@ -1,3 +1,5 @@
+# Ignore client config for node_client
+node_client/client.config.json
 keys
 data
 path
