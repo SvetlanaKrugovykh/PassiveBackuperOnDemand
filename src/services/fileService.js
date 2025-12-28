@@ -1,9 +1,19 @@
 const limitPromise = import('p-limit').then(mod => mod.default)
 const fs = require('fs').promises
 const path = require('path')
-const { createReadStream, createWriteStream } = require('fs')
+const { createReadStream, createWriteStream, appendFileSync, existsSync, mkdirSync } = require('fs')
 const archiver = require('archiver')
+const crypto = require('crypto')
 require('dotenv').config()
+
+// Simple file logger
+function logToFile(msg) {
+  const logDir = path.join(__dirname, '../../logs')
+  if (!existsSync(logDir)) mkdirSync(logDir, { recursive: true })
+  const logPath = path.join(logDir, 'backuper.log')
+  const line = `[${new Date().toISOString()}] ${msg}\n`
+  appendFileSync(logPath, line)
+}
 
 module.exports.ensureStoragePath = async function (senderServerName, serviceName) {
   const SLASH = process.env.SLASH || path.sep
@@ -54,9 +64,13 @@ module.exports.fetchFiles = async (queries) => {
 
         if (finalFileSize <= CHUNK_SIZE) {
           const content = await fs.readFile(finalFilePath)
+          // Calculate sha256
+          const hash = crypto.createHash('sha256').update(content).digest('hex')
+          logToFile(`File ${finalFilePath} sha256: ${hash}`)
           return {
             fileName: path.basename(finalFilePath),
-            content: content.toString('base64')
+            content: content.toString('base64'),
+            sha256: hash
           }
         } else {
           const chunks = []
@@ -77,8 +91,24 @@ module.exports.fetchFiles = async (queries) => {
               chunkPath
             })
           }
-          return { fileName: path.basename(finalFilePath), chunks }
+          // After splitting, calculate sha256 and log
+          const fileBuffer = await fs.readFile(finalFilePath)
+          const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex')
+          logToFile(`File ${finalFilePath} sha256: ${hash}`)
+          return { fileName: path.basename(finalFilePath), chunks, sha256: hash }
         }
+      // Utility to remove all chunk files after successful assembly
+      async function removeChunks(fileName, numChunks, tempCatalog) {
+        for (let i = 1; i <= numChunks; i++) {
+          const chunkPath = path.join(tempCatalog, `${fileName}_chunk_${i}`)
+          try {
+            await fs.unlink(chunkPath)
+            logToFile(`Deleted chunk: ${chunkPath}`)
+          } catch (e) {
+            logToFile(`Failed to delete chunk: ${chunkPath} (${e.message})`)
+          }
+        }
+      }
       }))
 
       results.push({ directory, matchedFiles: fileData })

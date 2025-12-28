@@ -2,6 +2,15 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const cron = require('node-cron');
+const crypto = require('crypto');
+// Simple file logger
+function logToFile(msg) {
+  const logDir = path.join(__dirname, '../logs');
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+  const logPath = path.join(logDir, 'client.log');
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  fs.appendFileSync(logPath, line);
+}
 
 const configPath = path.join(__dirname, 'client.config.json');
 
@@ -16,16 +25,21 @@ async function sendFileJob(job) {
     token,
     senderServerName,
     serviceName,
-    chunkSize = 52428800
+    chunkSize = 52428800,
+    maxRetries = 3
   } = job;
   if (!fs.existsSync(file)) {
-    console.error(`File not found: ${file}`);
+    logToFile(`File not found: ${file}`);
     return;
   }
   const stat = fs.statSync(file);
   const fileSize = stat.size;
   const numChunks = Math.ceil(fileSize / chunkSize);
   const fileName = path.basename(file);
+  // Calculate sha256 for the file
+  const fileBuffer = fs.readFileSync(file);
+  const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+  logToFile(`File ${file} sha256: ${hash}`);
   const readStream = fs.createReadStream(file, { highWaterMark: chunkSize });
   let chunkId = 1;
   for await (const chunk of readStream) {
@@ -36,19 +50,30 @@ async function sendFileJob(job) {
       numChunks,
       content: b64,
       senderServerName,
-      serviceName
+      serviceName,
+      sha256: hash
     };
-    try {
-      const resp = await axios.post(`${serverUrl}/fetch-chunk`, data, {
-        headers: {
-          Authorization: token,
-          'Content-Type': 'application/json'
+    let sent = false;
+    let attempt = 0;
+    while (!sent && attempt < maxRetries) {
+      try {
+        const resp = await axios.post(`${serverUrl}/fetch-chunk`, data, {
+          headers: {
+            Authorization: token,
+            'Content-Type': 'application/json'
+          }
+        });
+        logToFile(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`);
+        sent = true;
+      } catch (e) {
+        attempt++;
+        logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`);
+        if (attempt >= maxRetries) {
+          logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`);
+          return;
         }
-      });
-      console.log(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`);
-    } catch (e) {
-      console.error(`Error sending chunk ${chunkId} for ${fileName}:`, e.message);
-      return;
+        await new Promise(res => setTimeout(res, 1000 * attempt)); // Exponential backoff
+      }
     }
     chunkId++;
   }
