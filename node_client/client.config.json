@@ -1,0 +1,10 @@
+[
+  {
+    "file": "../testfile1.bin",
+    "serverUrl": "http://127.0.0.1:7111",
+    "token": "Bearer <TOKEN>",
+    "senderServerName": "test-client",
+    "serviceName": "test-service",
+    "chunkSize": 52428800
+  }
+]
