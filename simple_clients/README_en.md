@@ -1,3 +1,20 @@
+# Summary
+
+Overall:
+This project is a modern, minimalist, and reliable way to organize backup and file transfer between different machines and operating systems. It is simpler and more transparent than many ready-made solutions, easily adapts to any needs, and does not require complex infrastructure.
+# Project Philosophy and Strengths
+
+This project is a modern, minimalist, and reliable solution for organizing backup and file transfer between different machines and operating systems. It is simpler and more transparent than many ready-made solutions, easily adapts to any requirements, and does not require complex infrastructure.
+
+**Key advantages:**
+- Uses standard technologies (Node.js, HTTP, JSON, base64) for easy support and extension.
+- Chunked file transfer for reliability and resumability.
+- Cross-platform: works as a service on Windows (nssm) and Unix (pm2).
+- Simple configuration, no hard dependencies.
+- Integrity control (sha256), logging, and retry for robustness.
+- No unnecessary dependencies or protocols.
+
+This approach is suitable for flexible, controlled, and transparent backup and file delivery in distributed environments.
 # Simple Clients Usage Guide for Passive Backuper Server
 
 ## 1. Server Preparation
