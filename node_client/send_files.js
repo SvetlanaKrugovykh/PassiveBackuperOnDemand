@@ -16,7 +16,7 @@ const fs = require('fs')
 const sendTelegramMessage = require('./send_telegram')
 const path = require('path')
 const axios = require('axios')
-const cron = require('node-cron')
+// const cron = require('node-cron')
 const crypto = require('crypto')
 // Simple file logger
 function logToFile(msg) {
@@ -25,6 +25,7 @@ function logToFile(msg) {
   const logPath = path.join(logDir, 'client.log')
   const line = `[${new Date().toISOString()}] ${msg}\n`
   fs.appendFileSync(logPath, line)
+  console.log(line.trim())
 }
 
 const configPath = path.join(__dirname, 'client.config.json')
@@ -54,12 +55,41 @@ function getDateStr(offset = 0, format = 'yyyy_mm_dd') {
     .replace(/dd/g, dd)
 }
 
-function findFilesByPatterns(directory, patterns, dateModes = ['today', 'yesterday']) {
+function findFilesByPatterns(directory, patterns, dateModes = ['today', 'yesterday'], recursive = false) {
   let files = []
   if (!Array.isArray(patterns)) patterns = [patterns]
   if (!Array.isArray(dateModes)) dateModes = [dateModes]
+  function walk(dir) {
+    let entries = []
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch (e) {
+      return []
+    }
+    let found = []
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (recursive) {
+          found = found.concat(walk(fullPath))
+        }
+      } else {
+        found.push(fullPath)
+      }
+    }
+    return found
+  }
+  let fileList = []
+  if (recursive) {
+    fileList = walk(directory)
+  } else {
+    try {
+      fileList = fs.readdirSync(directory).map(f => path.join(directory, f))
+    } catch (e) {
+      fileList = []
+    }
+  }
   for (const pattern of patterns) {
-    // Determine date format from {date:...} or use default
     let dateFormat = 'yyyy_mm_dd'
     let patternTemplate = pattern
     const dateMatch = pattern.match(/\{date(?::([^}]+))?}/)
@@ -71,15 +101,13 @@ function findFilesByPatterns(directory, patterns, dateModes = ['today', 'yesterd
       let offset = 0
       if (mode === 'yesterday') offset = -1
       if (mode === 'today') offset = 0
-      // You can add other modes (e.g., day before yesterday)
       const dateStr = getDateStr(offset, dateFormat)
       const mask = patternTemplate.replace('{date}', dateStr)
       const regex = new RegExp('^' + mask.replace(/\./g, '\.').replace(/\*/g, '.*') + '$')
-      if (fs.existsSync(directory)) {
-        for (const file of fs.readdirSync(directory)) {
-          if (regex.test(file)) {
-            files.push(path.join(directory, file))
-          }
+      for (const filePath of fileList) {
+        const fileName = path.basename(filePath)
+        if (regex.test(fileName)) {
+          files.push(filePath)
         }
       }
     }
@@ -101,6 +129,7 @@ async function sendFileJob(job, telegramConfig) {
     logToFile(`File not found: ${file}`)
     return
   }
+  logToFile(`Start sending file: ${file}`)
   const stat = fs.statSync(file)
   const fileSize = stat.size
   const numChunks = Math.ceil(fileSize / chunkSize)
@@ -109,6 +138,7 @@ async function sendFileJob(job, telegramConfig) {
   const fileBuffer = fs.readFileSync(file)
   const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex')
   logToFile(`File ${file} sha256: ${hash}`)
+  logToFile(`File size: ${fileSize} bytes, chunks: ${numChunks}`)
   const readStream = fs.createReadStream(file, { highWaterMark: chunkSize })
   let chunkId = 1
   let failed = false
@@ -134,10 +164,12 @@ async function sendFileJob(job, telegramConfig) {
           }
         })
         logToFile(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`)
+        console.log(`Sent chunk ${chunkId}/${numChunks} for ${fileName}`)
         sent = true
       } catch (e) {
         attempt++
         logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
+        console.error(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
         if (attempt >= maxRetries) {
           logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`)
           failed = true
@@ -164,6 +196,9 @@ async function sendFileJob(job, telegramConfig) {
       telegramConfig.chatId
     )
   }
+  if (!failed) {
+    logToFile(`File ${file} sent successfully!`)
+  }
 }
 
 async function main() {
@@ -175,7 +210,9 @@ async function main() {
     if ((job.patterns || job.pattern) && job.directory) {
       const patterns = job.patterns || job.pattern
       const dateModes = job.dateMode || ['today', 'yesterday']
-      const files = findFilesByPatterns(job.directory, patterns, dateModes)
+      const recursive = job.recursive === true
+      const files = findFilesByPatterns(job.directory, patterns, dateModes, recursive)
+      logToFile(`Found ${files.length} files for job in directory ${job.directory}${recursive ? ' (recursive)' : ''}`)
       for (const file of files) {
         let fileToSend = file
         // zip support
@@ -190,6 +227,7 @@ async function main() {
       }
     } else if (job.file) {
       // Standard mode — send specific file
+      logToFile(`Sending single file: ${job.file}`)
       await sendFileJob(job, telegramConfig)
     }
   }
@@ -197,6 +235,3 @@ async function main() {
 
 // Run once at startup
 main()
-
-// Schedule with cron if needed (example: every day at 2:00)
-// cron.schedule('0 2 * * *', main)

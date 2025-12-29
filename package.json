@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "archiver": "^7.0.1",
+    "axios": "^1.13.2",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.1",
     "fastify-plugin": "^5.0.1",
@@ -8,6 +9,7 @@
     "http-errors": "^2.0.0",
     "ip-range-check": "^0.2.0",
     "jsonwebtoken": "^9.0.2",
+    "node-cron": "^4.2.1",
     "node-windows": "^1.0.0-beta.8",
     "p-limit": "^6.2.0",
     "path": "^0.12.7",

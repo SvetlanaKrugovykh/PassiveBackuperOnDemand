@@ -10,3 +10,4 @@ temp
 .idea
 .eslint*
 daemon
+*.log
