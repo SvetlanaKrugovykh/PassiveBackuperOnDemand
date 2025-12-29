@@ -8,19 +8,32 @@ async function tryAssembleFile(fileName, numChunks, senderServerName, serviceNam
   const outDir = path.join(storageRoot, senderServerName, serviceName)
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true })
   const outPath = path.join(outDir, fileName)
-  const writeStream = fs.createWriteStream(outPath)
   for (let i = 1; i <= numChunks; i++) {
     const chunkPath = path.join(tempDir, `${fileName}_chunk_${i}`)
     if (!fs.existsSync(chunkPath)) return // Not all chunks yet
   }
   // All chunks exist, assemble
-  for (let i = 1; i <= numChunks; i++) {
-    const chunkPath = path.join(tempDir, `${fileName}_chunk_${i}`)
-    const data = fs.readFileSync(chunkPath)
-    writeStream.write(data)
-    fs.unlinkSync(chunkPath)
+  let writeStream
+  try {
+    writeStream = fs.createWriteStream(outPath)
+    for (let i = 1; i <= numChunks; i++) {
+      const chunkPath = path.join(tempDir, `${fileName}_chunk_${i}`)
+      const data = fs.readFileSync(chunkPath)
+      writeStream.write(data)
+      fs.unlinkSync(chunkPath)
+    }
+    await new Promise((resolve, reject) => {
+      writeStream.end()
+      writeStream.on('finish', resolve)
+      writeStream.on('error', err => {
+        console.error('Error assembling file:', err)
+        resolve() // Не падаем, просто завершаем
+      })
+    })
+  } catch (err) {
+    console.error('Error assembling file:', err)
+    if (writeStream) try { writeStream.destroy() } catch {}
   }
-  writeStream.end()
 }
 module.exports.uploadChunk = async function (request, reply) {
   try {

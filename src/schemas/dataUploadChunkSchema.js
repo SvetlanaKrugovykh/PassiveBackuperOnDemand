@@ -4,10 +4,10 @@ module.exports = {
   summary: 'Upload a specific chunk of a file',
   headers: {
     type: 'object',
-    properties: {
-      Authorization: { type: 'string' },
-    },
-    required: ['Authorization'],
+    // properties: {
+    //   Authorization: { type: 'string' },
+    // },
+    // required: ['Authorization'],
   },
   body: {
     type: 'object',
