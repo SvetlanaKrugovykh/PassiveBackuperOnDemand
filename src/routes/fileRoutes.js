@@ -10,7 +10,7 @@ module.exports = (fastify, _opts, done) => {
     method: 'POST',
     url: '/upload-chunk',
     handler: fileController.uploadChunk,
-    // preHandler: [isAuthorizedGuard],
+    preHandler: [isAuthorizedGuard],
     schema: dataUploadChunkSchema
   })
 
