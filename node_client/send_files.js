@@ -148,9 +148,9 @@ async function sendFileJob(job, telegramConfig) {
   logToFile(`File size: ${fileSize} bytes, chunks: ${numChunks}`)
   const readStream = fs.createReadStream(file, { highWaterMark: chunkSize })
   let chunkId = 1
-  let failed = false
+  let failed = false;
   for await (const chunk of readStream) {
-    const b64 = chunk.toString('base64')
+    const b64 = chunk.toString('base64');
     const data = {
       fileName,
       chunkId: Number(chunkId), // ensure integer
@@ -159,41 +159,42 @@ async function sendFileJob(job, telegramConfig) {
       senderServerName,
       serviceName,
       sha256: hash
-    }
-    let sent = false
-    let attempt = 0
+    };
+    let sent = false;
+    let attempt = 0;
     while (!sent && attempt < maxRetries) {
       try {
         const resp = await axios.post(`${serverUrl}/upload-chunk`, data, {
           headers: {
             Authorization: token,
             'Content-Type': 'application/json'
-          }
-        })
-        logToFile(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`)
-        console.log(`Sent chunk ${chunkId}/${numChunks} for ${fileName}`)
-        sent = true
+          },
+          timeout: 300000 // 5 минут на каждый чанк
+        });
+        logToFile(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`);
+        console.log(`Sent chunk ${chunkId}/${numChunks} for ${fileName}`);
+        sent = true;
+        chunkId++; // Инкремент только после успешной отправки
       } catch (e) {
-        attempt++
-        logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
-        console.error(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
+        attempt++;
+        logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`);
+        console.error(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`);
         if (attempt >= maxRetries) {
-          logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`)
-          failed = true
+          logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`);
+          failed = true;
           // Send Telegram notification about failure (connection issue)
           if (telegramConfig.botToken && telegramConfig.chatId) {
             await sendTelegramMessage(
               '🚨 <b>File transfer failed</b>!\nClient <b>' + senderServerName + '</b> could not connect to the server for file <b>' + fileName + '</b>. Please check the server status.',
               telegramConfig.botToken,
               telegramConfig.chatId
-            )
+            );
           }
-          return
+          return;
         }
-        await new Promise(res => setTimeout(res, 1000 * attempt)) // Exponential backoff
+        await new Promise(res => setTimeout(res, 1000 * attempt)); // Exponential backoff
       }
     }
-    chunkId++
   }
   // If all chunks sent and not failed, send success notification
   if (!failed && telegramConfig.botToken && telegramConfig.chatId) {

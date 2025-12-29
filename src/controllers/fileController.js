@@ -9,30 +9,42 @@ async function tryAssembleFile(fileName, numChunks, senderServerName, serviceNam
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true })
   const outPath = path.join(outDir, fileName)
   for (let i = 1; i <= numChunks; i++) {
-    const chunkPath = path.join(tempDir, `${fileName}_chunk_${i}`)
-    if (!fs.existsSync(chunkPath)) return // Not all chunks yet
+    const chunkPath = path.join(tempDir, `${fileName}_chunk_${i}`);
+    if (!fs.existsSync(chunkPath)) return; // Not all chunks yet
   }
   // All chunks exist, assemble
-  let writeStream
+  let writeStream;
   try {
-    writeStream = fs.createWriteStream(outPath)
+    writeStream = fs.createWriteStream(outPath);
     for (let i = 1; i <= numChunks; i++) {
-      const chunkPath = path.join(tempDir, `${fileName}_chunk_${i}`)
-      const data = fs.readFileSync(chunkPath)
-      writeStream.write(data)
-      fs.unlinkSync(chunkPath)
+      const chunkPath = path.join(tempDir, `${fileName}_chunk_${i}`);
+      const data = fs.readFileSync(chunkPath);
+      writeStream.write(data);
+      fs.unlinkSync(chunkPath);
     }
     await new Promise((resolve, reject) => {
-      writeStream.end()
-      writeStream.on('finish', resolve)
+      writeStream.end();
+      writeStream.on('finish', resolve);
       writeStream.on('error', err => {
-        console.error('Error assembling file:', err)
-        resolve() // Не падаем, просто завершаем
-      })
-    })
+        console.error('Error assembling file:', err);
+        resolve(); // Не падаем, просто завершаем
+      });
+    });
+    // Проверка размера итогового файла
+    const expectedSize = numChunks * (parseInt(process.env.CHUNK_SIZE) || 52428800);
+    const actualSize = fs.statSync(outPath).size;
+    if (Number(process.env.DEBUG_LEVEL) > 0) {
+      console.log(`[Assemble] File: ${outPath}, expected <= ${expectedSize}, actual: ${actualSize}`);
+    }
+    // Если последний чанк меньше chunkSize, допускаем, что actualSize < expectedSize
+    if (actualSize > expectedSize || actualSize === 0) {
+      console.error(`[Assemble] ERROR: Assembled file size mismatch! Deleting file.`);
+      try { fs.unlinkSync(outPath); } catch {}
+    }
   } catch (err) {
-    console.error('Error assembling file:', err)
-    if (writeStream) try { writeStream.destroy() } catch {}
+    console.error('Error assembling file:', err);
+    if (writeStream) try { writeStream.destroy(); } catch {}
+    try { fs.unlinkSync(outPath); } catch {}
   }
 }
 module.exports.uploadChunk = async function (request, reply) {
