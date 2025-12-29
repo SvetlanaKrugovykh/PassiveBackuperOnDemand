@@ -1,3 +1,11 @@
+const dataUploadChunkSchema = require('../schemas/dataUploadChunkSchema')
+  fastify.route({
+    method: 'POST',
+    url: '/upload-chunk',
+    handler: fileController.uploadChunk,
+    // preHandler: [isAuthorizedGuard],
+    schema: dataUploadChunkSchema
+  })
 const fileController = require('../controllers/fileController')
 const isAuthorizedGuard = require('../guards/isAuthorizedGuard')
 const dataExchangeSchema = require('../schemas/dataExchangeSchema')

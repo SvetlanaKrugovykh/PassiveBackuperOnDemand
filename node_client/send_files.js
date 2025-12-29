@@ -153,7 +153,7 @@ async function sendFileJob(job, telegramConfig) {
     const b64 = chunk.toString('base64')
     const data = {
       fileName,
-      chunkId,
+      chunkId: Number(chunkId), // ensure integer
       numChunks,
       content: b64,
       senderServerName,

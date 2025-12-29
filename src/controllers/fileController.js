@@ -1,3 +1,24 @@
+module.exports.uploadChunk = async function (request, reply) {
+  try {
+    let { fileName, chunkId, numChunks, content } = request.body
+    if (typeof chunkId === 'string' && /^\d+$/.test(chunkId)) {
+      chunkId = parseInt(chunkId, 10)
+    }
+    if (!fileName || typeof fileName !== 'string' || typeof chunkId !== 'number' || !Number.isInteger(chunkId) || typeof content !== 'string') {
+      return reply.status(400).send({ error: 'Invalid input format' })
+    }
+    const tempDir = process.env.TEMP_CATALOG || 'C:/Temp/chunks/'
+    const fs = require('fs')
+    const path = require('path')
+    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true })
+    const chunkPath = path.join(tempDir, `${fileName}_chunk_${chunkId}`)
+    const buffer = Buffer.from(content, 'base64')
+    fs.writeFileSync(chunkPath, buffer)
+    return reply.send({ success: true, message: `Chunk ${chunkId} for ${fileName} uploaded.` })
+  } catch (error) {
+    reply.status(500).send({ error: 'Error processing upload', details: error.message })
+  }
+}
 const fileService = require('../services/fileService')
 
 module.exports.getFiles = async function (request, reply) {
@@ -25,9 +46,12 @@ module.exports.getFiles = async function (request, reply) {
 
 module.exports.fetchChunk = async function (request, reply) {
   try {
-    const { fileName, chunkId } = request.body
-
-    if (!fileName || typeof chunkId !== 'number') {
+    let { fileName, chunkId } = request.body
+    // Ensure chunkId is integer (schema expects integer)
+    if (typeof chunkId === 'string' && /^\d+$/.test(chunkId)) {
+      chunkId = parseInt(chunkId, 10)
+    }
+    if (!fileName || typeof fileName !== 'string' || typeof chunkId !== 'number' || !Number.isInteger(chunkId)) {
       return reply.status(400).send({ error: 'Invalid input format' })
     }
 
