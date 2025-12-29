@@ -1,4 +1,11 @@
+
+const fileController = require('../controllers/fileController')
+const isAuthorizedGuard = require('../guards/isAuthorizedGuard')
+const dataExchangeSchema = require('../schemas/dataExchangeSchema')
+const dataChunkSchema = require('../schemas/dataChunkSchema')
 const dataUploadChunkSchema = require('../schemas/dataUploadChunkSchema')
+
+module.exports = (fastify, _opts, done) => {
   fastify.route({
     method: 'POST',
     url: '/upload-chunk',
@@ -6,12 +13,6 @@ const dataUploadChunkSchema = require('../schemas/dataUploadChunkSchema')
     // preHandler: [isAuthorizedGuard],
     schema: dataUploadChunkSchema
   })
-const fileController = require('../controllers/fileController')
-const isAuthorizedGuard = require('../guards/isAuthorizedGuard')
-const dataExchangeSchema = require('../schemas/dataExchangeSchema')
-const dataChunkSchema = require('../schemas/dataChunkSchema')
-
-module.exports = (fastify, _opts, done) => {
 
   fastify.route({
     method: 'POST',
@@ -27,10 +28,10 @@ module.exports = (fastify, _opts, done) => {
     method: 'POST',
     url: '/fetch-chunk',
     handler: fileController.fetchChunk,
-    preHandler: [
-      isAuthorizedGuard
-    ],
-    schema: dataChunkSchema
+    // preHandler: [
+    //   isAuthorizedGuard
+    // ],
+    // schema: dataChunkSchema
   })
 
   fastify.route({
