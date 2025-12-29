@@ -164,7 +164,7 @@ async function sendFileJob(job, telegramConfig) {
     let attempt = 0
     while (!sent && attempt < maxRetries) {
       try {
-        const resp = await axios.post(`${serverUrl}/fetch-chunk`, data, {
+        const resp = await axios.post(`${serverUrl}/upload-chunk`, data, {
           headers: {
             Authorization: token,
             'Content-Type': 'application/json'
