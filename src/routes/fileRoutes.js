@@ -11,7 +11,7 @@ module.exports = (fastify, _opts, done) => {
     url: '/upload-chunk',
     handler: fileController.uploadChunk,
     // preHandler: [isAuthorizedGuard],
-    schema: dataUploadChunkSchema
+    // schema: dataUploadChunkSchema
   })
 
   fastify.route({

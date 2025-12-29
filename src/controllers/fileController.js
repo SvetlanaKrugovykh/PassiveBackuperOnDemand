@@ -1,19 +1,45 @@
+// Utility: try to assemble file from chunks if all received
+const fs = require('fs')
+const path = require('path')
+async function tryAssembleFile(fileName, numChunks, senderServerName, serviceName) {
+  const tempDir = process.env.TEMP_CATALOG || 'C:/Temp/chunks/'
+  const storageRoot = process.env.STORAGE_ROOT_DIR || 'D:/PassiveStorage/'
+  if (!senderServerName || !serviceName) return
+  const outDir = path.join(storageRoot, senderServerName, serviceName)
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true })
+  const outPath = path.join(outDir, fileName)
+  const writeStream = fs.createWriteStream(outPath)
+  for (let i = 1; i <= numChunks; i++) {
+    const chunkPath = path.join(tempDir, `${fileName}_chunk_${i}`)
+    if (!fs.existsSync(chunkPath)) return // Not all chunks yet
+  }
+  // All chunks exist, assemble
+  for (let i = 1; i <= numChunks; i++) {
+    const chunkPath = path.join(tempDir, `${fileName}_chunk_${i}`)
+    const data = fs.readFileSync(chunkPath)
+    writeStream.write(data)
+    fs.unlinkSync(chunkPath)
+  }
+  writeStream.end()
+}
 module.exports.uploadChunk = async function (request, reply) {
   try {
-    let { fileName, chunkId, numChunks, content } = request.body
+    let { fileName, chunkId, numChunks, content, senderServerName, serviceName } = request.body
     if (typeof chunkId === 'string' && /^\d+$/.test(chunkId)) {
       chunkId = parseInt(chunkId, 10)
     }
-    if (!fileName || typeof fileName !== 'string' || typeof chunkId !== 'number' || !Number.isInteger(chunkId) || typeof content !== 'string') {
+    if (!fileName || typeof fileName !== 'string' || typeof chunkId !== 'number' || !Number.isInteger(chunkId) || typeof content !== 'string' || typeof numChunks !== 'number') {
       return reply.status(400).send({ error: 'Invalid input format' })
     }
     const tempDir = process.env.TEMP_CATALOG || 'C:/Temp/chunks/'
-    const fs = require('fs')
-    const path = require('path')
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true })
     const chunkPath = path.join(tempDir, `${fileName}_chunk_${chunkId}`)
     const buffer = Buffer.from(content, 'base64')
     fs.writeFileSync(chunkPath, buffer)
+    // Try to assemble file if all chunks received
+    try {
+      await tryAssembleFile(fileName, numChunks, senderServerName, serviceName)
+    } catch {}
     return reply.send({ success: true, message: `Chunk ${chunkId} for ${fileName} uploaded.` })
   } catch (error) {
     reply.status(500).send({ error: 'Error processing upload', details: error.message })
