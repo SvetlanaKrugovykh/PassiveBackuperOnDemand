@@ -134,9 +134,16 @@ async function sendFileJob(job, telegramConfig) {
   const fileSize = stat.size
   const numChunks = Math.ceil(fileSize / chunkSize)
   const fileName = path.basename(file)
-  // Calculate sha256 for the file
-  const fileBuffer = fs.readFileSync(file)
-  const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex')
+  // Calculate sha256 for the file using streaming (do not load entire file into memory)
+  logToFile(`Calculating sha256 for large file...`)
+  const hashStream = crypto.createHash('sha256')
+  await new Promise((resolve, reject) => {
+    const s = fs.createReadStream(file)
+    s.on('data', chunk => hashStream.update(chunk))
+    s.on('end', resolve)
+    s.on('error', reject)
+  })
+  const hash = hashStream.digest('hex')
   logToFile(`File ${file} sha256: ${hash}`)
   logToFile(`File size: ${fileSize} bytes, chunks: ${numChunks}`)
   const readStream = fs.createReadStream(file, { highWaterMark: chunkSize })
