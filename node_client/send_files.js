@@ -119,12 +119,14 @@ async function sendFileJob(job, telegramConfig) {
   const {
     file,
     serverUrl,
-    token,
     senderServerName,
     serviceName,
     chunkSize = 52428800,
     maxRetries = 3
   } = job
+  // Use job.token if present, otherwise use config.token
+  const config = loadConfig()
+  const token = job.token || config.token
   if (!fs.existsSync(file)) {
     logToFile(`File not found: ${file}`)
     return
@@ -169,37 +171,37 @@ async function sendFileJob(job, telegramConfig) {
             Authorization: token,
             'Content-Type': 'application/json'
           },
-          timeout: 300000 // 5 минут на каждый чанк
-        });
-        logToFile(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`);
-        console.log(`Sent chunk ${chunkId}/${numChunks} for ${fileName}`);
-        sent = true;
-        chunkId++; // Инкремент только после успешной отправки
+          timeout: 300000 // 5 minutes per chunk
+        })
+        logToFile(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`)
+        console.log(`Sent chunk ${chunkId}/${numChunks} for ${fileName}`)
+        sent = true
+        chunkId++
       } catch (e) {
-        attempt++;
-        logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`);
-        console.error(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`);
+        attempt++
+        logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
+        console.error(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
         if (attempt >= maxRetries) {
-          logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`);
-          failed = true;
+          logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`)
+          failed = true
           // Send Telegram notification about failure (connection issue)
           if (telegramConfig.botToken && telegramConfig.chatId) {
             await sendTelegramMessage(
               '🚨 <b>File transfer failed</b>!\nClient <b>' + senderServerName + '</b> could not connect to the server for file <b>' + fileName + '</b>. Please check the server status.',
               telegramConfig.botToken,
               telegramConfig.chatId
-            );
+            )
           }
-          return;
+          return
         }
-        await new Promise(res => setTimeout(res, 1000 * attempt)); // Exponential backoff
+        await new Promise(res => setTimeout(res, 1000 * attempt)) // Exponential backoff
       }
     }
   }
   // If all chunks sent and not failed, send success notification
   if (!failed && telegramConfig.botToken && telegramConfig.chatId) {
     await sendTelegramMessage(
-      '📦 <b>File transfer complete</b>!\nAll files from client <b>' + senderServerName + '</b> have been successfully delivered to the server.',
+      'File transfer complete!\nAll files from client ' + senderServerName + ' have been successfully delivered to the server.',
       telegramConfig.botToken,
       telegramConfig.chatId
     )
@@ -214,7 +216,7 @@ async function main() {
   const telegramConfig = getTelegramConfig()
   const jobs = config.jobs || config
   for (const job of jobs) {
-    // If patterns (or pattern) and directory are specified — search files by masks with dateMode support
+    // If patterns (or pattern) and directory are specified - search files by masks with dateMode support
     if ((job.patterns || job.pattern) && job.directory) {
       const patterns = job.patterns || job.pattern
       const dateModes = job.dateMode || ['today', 'yesterday']
@@ -234,7 +236,7 @@ async function main() {
         }
       }
     } else if (job.file) {
-      // Standard mode — send specific file
+      // Standard mode - send specific file
       logToFile(`Sending single file: ${job.file}`)
       await sendFileJob(job, telegramConfig)
     }
