@@ -3,7 +3,7 @@ REM Register PassiveBackuperClient as a Windows service using nssm
 REM Prerequisite: Download and install nssm (https://nssm.cc/download)
 
 set NODE_PATH=%~dp0\..\node.exe
-set SCRIPT_PATH=%~dp0send_files.js
+set SCRIPT_PATH=%~dp0send_files_cron.js
 set SERVICE_NAME=PassiveBackuperClient
 
 REM Adjust NODE_PATH if node.exe is not in the parent directory

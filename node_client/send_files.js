@@ -244,9 +244,15 @@ async function sendFileJob(job, telegramConfig) {
 }
 
 async function main() {
-  const config = loadConfig()
+  let config = loadConfig()
+  let jobs = config.jobs || config
+  // Support running a single job via environment variable (for send_files_cron.js)
+  if (process.env.JOB_OVERRIDE) {
+    try {
+      jobs = [JSON.parse(process.env.JOB_OVERRIDE)]
+    } catch {}
+  }
   const telegramConfig = getTelegramConfig()
-  const jobs = config.jobs || config
   for (const job of jobs) {
     // Check runEveryNDays logic
     if (job.runEveryNDays && Number.isInteger(job.runEveryNDays) && job.runEveryNDays > 1) {
