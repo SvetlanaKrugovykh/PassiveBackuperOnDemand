@@ -216,6 +216,15 @@ async function main() {
   const telegramConfig = getTelegramConfig()
   const jobs = config.jobs || config
   for (const job of jobs) {
+    // Check runEveryNDays logic
+    if (job.runEveryNDays && Number.isInteger(job.runEveryNDays) && job.runEveryNDays > 1) {
+      const now = new Date()
+      const dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000)
+      if (dayOfYear % job.runEveryNDays !== 0) {
+        logToFile(`Skipping job for ${job.senderServerName || job.serviceName || job.file} (runEveryNDays=${job.runEveryNDays})`)
+        continue
+      }
+    }
     // If patterns (or pattern) and directory are specified - search files by masks with dateMode support
     if ((job.patterns || job.pattern) && job.directory) {
       const patterns = job.patterns || job.pattern
