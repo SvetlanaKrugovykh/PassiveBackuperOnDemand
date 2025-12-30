@@ -18,7 +18,8 @@ module.exports = {
       content: { type: 'string' },
       senderServerName: { type: 'string' },
       serviceName: { type: 'string' },
-      sha256: { type: 'string' }
+      sha256: { type: 'string' },
+      rotationCount: { type: 'integer', minimum: 2, maximum: 10 }
     },
     required: ['fileName', 'chunkId', 'numChunks', 'content'],
   },
