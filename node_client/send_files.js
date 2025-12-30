@@ -306,11 +306,13 @@ async function main() {
     }
     // Отправка Telegram-уведомления по завершении job
     if (telegramConfig.botToken && telegramConfig.chatId) {
+      const serverName = job.senderServerName || 'unknown';
+      const serviceName = job.serviceName || 'unknown';
       let msg = '';
       if (!jobFailed) {
-        msg = `✅ <b>Job complete</b>!\nJob: <b>${job.senderServerName || job.serviceName || 'unknown'}</b>\nFiles: ${files.length}\nВсе файлы успешно отправлены.`;
+        msg = `✅ <b>Backup Job Успешно завершён!</b>\n\n<b>Сервер:</b> <code>${serverName}</code>\n<b>Сервис:</b> <code>${serviceName}</code>\n<b>Файлов отправлено:</b> <b>${files.length}</b>\n\n<i>Все файлы успешно доставлены на сервер.</i>`;
       } else {
-        msg = `🚨 <b>Job failed</b>!\nJob: <b>${job.senderServerName || job.serviceName || 'unknown'}</b>\nFiles: ${files.length}\nОшибка при отправке одного или нескольких файлов.`;
+        msg = `🚨 <b>Ошибка при выполнении Backup Job!</b>\n\n<b>Сервер:</b> <code>${serverName}</code>\n<b>Сервис:</b> <code>${serviceName}</code>\n<b>Файлов обработано:</b> <b>${files.length}</b>\n\n<i>Ошибка при отправке одного или нескольких файлов.</i>`;
       }
       await sendTelegramMessage(msg, telegramConfig.botToken, telegramConfig.chatId);
     }
