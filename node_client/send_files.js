@@ -310,9 +310,9 @@ async function main() {
       const serviceName = job.serviceName || 'unknown';
       let msg = '';
       if (!jobFailed) {
-        msg = `✅ <b>Backup Job Успешно завершён!</b>\n\n<b>Сервер:</b> <code>${serverName}</code>\n<b>Сервис:</b> <code>${serviceName}</code>\n<b>Файлов отправлено:</b> <b>${files.length}</b>\n\n<i>Все файлы успешно доставлены на сервер.</i>`;
+        msg = `✅ <b>Backup Job Completed Successfully!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files sent:</b> <b>${files.length}</b>\n\n<i>All files have been successfully delivered to the server.</i>`;
       } else {
-        msg = `🚨 <b>Ошибка при выполнении Backup Job!</b>\n\n<b>Сервер:</b> <code>${serverName}</code>\n<b>Сервис:</b> <code>${serviceName}</code>\n<b>Файлов обработано:</b> <b>${files.length}</b>\n\n<i>Ошибка при отправке одного или нескольких файлов.</i>`;
+        msg = `🚨 <b>Backup Job Failed!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files processed:</b> <b>${files.length}</b>\n\n<i>Error occurred while sending one or more files.</i>`;
       }
       await sendTelegramMessage(msg, telegramConfig.botToken, telegramConfig.chatId);
     }
