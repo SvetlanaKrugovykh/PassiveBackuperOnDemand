@@ -1,5 +1,5 @@
 const archiver = require('archiver')
-// Archive file to zip, returns path to archive
+// Archive file or folders to zip, returns path to archive
 function zipFile(inputPath) {
   return new Promise((resolve, reject) => {
     const outputZip = inputPath + '.zip'
@@ -8,7 +8,39 @@ function zipFile(inputPath) {
     output.on('close', () => resolve(outputZip))
     archive.on('error', reject)
     archive.pipe(output)
-    archive.file(inputPath, { name: path.basename(inputPath) })
+    if (fs.lstatSync(inputPath).isDirectory()) {
+      archive.directory(inputPath, path.basename(inputPath))
+    } else {
+      archive.file(inputPath, { name: path.basename(inputPath) })
+    }
+    archive.finalize()
+  })
+}
+
+// Archive multiple folders/files with exclusions and custom output dir
+async function zipMultipleWithExclude({ include, exclude = [], format = 'zip', zip_catalog }) {
+  const archiveName = `backup_${Date.now()}.${format}`
+  const outDir = zip_catalog && typeof zip_catalog === 'string' ? zip_catalog : require('os').tmpdir()
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true })
+  const outputZip = path.join(outDir, archiveName)
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(outputZip)
+    const archive = archiver(format, { zlib: { level: 9 } })
+    output.on('close', () => resolve(outputZip))
+    archive.on('error', reject)
+    archive.pipe(output)
+    const shouldExclude = (filePath) => exclude.some(ex => filePath.startsWith(path.normalize(ex)))
+    for (const inc of include) {
+      const stat = fs.lstatSync(inc)
+      if (stat.isDirectory()) {
+        archive.directory(inc, path.basename(inc), (entry) => {
+          const fullPath = path.join(inc, entry.name)
+          return shouldExclude(fullPath) ? false : entry
+        })
+      } else {
+        if (!shouldExclude(inc)) archive.file(inc, { name: path.basename(inc) })
+      }
+    }
     archive.finalize()
   })
 }
@@ -244,6 +276,15 @@ async function main() {
           try { fs.unlinkSync(fileToSend) } catch {}
         }
       }
+    } else if (job.archive && Array.isArray(job.archive.include)) {
+      // Archive multiple folders/files with exclusions
+      logToFile(`Archiving for job: ${job.senderServerName || job.serviceName}`)
+      const archivePath = await zipMultipleWithExclude({
+        ...job.archive,
+        zip_catalog: job.zip_catalog
+      })
+      await sendFileJob({ ...job, file: archivePath }, telegramConfig)
+      try { fs.unlinkSync(archivePath) } catch {}
     } else if (job.file) {
       // Standard mode - send specific file
       logToFile(`Sending single file: ${job.file}`)
