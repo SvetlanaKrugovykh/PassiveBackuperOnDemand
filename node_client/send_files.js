@@ -264,6 +264,16 @@ async function main() {
       const recursive = job.recursive === true
       files = findFilesByPatterns(job.directory, patterns, dateModes, recursive)
       logToFile(`Found ${files.length} files for job in directory ${job.directory}${recursive ? ' (recursive)' : ''}`)
+      if (files.length === 0) {
+        logToFile(`No files found for backup job in directory ${job.directory}${recursive ? ' (recursive)' : ''}. Job not completed.`)
+        if (telegramConfig.botToken && telegramConfig.chatId) {
+          const serverName = job.senderServerName || 'unknown'
+          const serviceName = job.serviceName || 'unknown'
+          const msg = `⚠️ <b>Backup Job Not Completed</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files found:</b> <b>0</b>\n\n<i>No files found for backup job. Job not completed.</i>`
+          await sendTelegramMessage(msg, telegramConfig.botToken, telegramConfig.chatId)
+        }
+        continue
+      }
       for (const file of files) {
         let fileToSend = file
         // zip support
