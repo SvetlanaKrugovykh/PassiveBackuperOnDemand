@@ -230,14 +230,6 @@ async function sendFileJob(job, telegramConfig) {
       }
     }
   }
-  // If all chunks sent and not failed, send success notification
-  if (!failed && telegramConfig.botToken && telegramConfig.chatId) {
-    await sendTelegramMessage(
-      'File transfer complete!\nAll files from client ' + senderServerName + ' have been successfully delivered to the server.',
-      telegramConfig.botToken,
-      telegramConfig.chatId
-    )
-  }
   if (!failed) {
     logToFile(`File ${file} sent successfully!`)
   }
@@ -254,6 +246,8 @@ async function main() {
   }
   const telegramConfig = getTelegramConfig()
   for (const job of jobs) {
+    let jobFailed = false;
+    let files = [];
     // Check runEveryNDays logic
     if (job.runEveryNDays && Number.isInteger(job.runEveryNDays) && job.runEveryNDays > 1) {
       const now = new Date()
@@ -268,7 +262,7 @@ async function main() {
       const patterns = job.patterns || job.pattern
       const dateModes = job.dateMode || ['today', 'yesterday']
       const recursive = job.recursive === true
-      const files = findFilesByPatterns(job.directory, patterns, dateModes, recursive)
+      files = findFilesByPatterns(job.directory, patterns, dateModes, recursive)
       logToFile(`Found ${files.length} files for job in directory ${job.directory}${recursive ? ' (recursive)' : ''}`)
       for (const file of files) {
         let fileToSend = file
@@ -276,7 +270,11 @@ async function main() {
         if (job.zip) {
           fileToSend = await zipFile(file)
         }
-        await sendFileJob({ ...job, file: fileToSend }, telegramConfig)
+        try {
+          await sendFileJob({ ...job, file: fileToSend }, telegramConfig)
+        } catch (e) {
+          jobFailed = true;
+        }
         // optionally, remove zip after send
         if (job.zip) {
           try { fs.unlinkSync(fileToSend) } catch {}
@@ -289,12 +287,32 @@ async function main() {
         ...job.archive,
         zip_catalog: job.zip_catalog
       })
-      await sendFileJob({ ...job, file: archivePath }, telegramConfig)
+      files = [archivePath];
+      try {
+        await sendFileJob({ ...job, file: archivePath }, telegramConfig)
+      } catch (e) {
+        jobFailed = true;
+      }
       try { fs.unlinkSync(archivePath) } catch {}
     } else if (job.file) {
       // Standard mode - send specific file
       logToFile(`Sending single file: ${job.file}`)
-      await sendFileJob(job, telegramConfig)
+      files = [job.file];
+      try {
+        await sendFileJob(job, telegramConfig)
+      } catch (e) {
+        jobFailed = true;
+      }
+    }
+    // Отправка Telegram-уведомления по завершении job
+    if (telegramConfig.botToken && telegramConfig.chatId) {
+      let msg = '';
+      if (!jobFailed) {
+        msg = `✅ <b>Job complete</b>!\nJob: <b>${job.senderServerName || job.serviceName || 'unknown'}</b>\nFiles: ${files.length}\nВсе файлы успешно отправлены.`;
+      } else {
+        msg = `🚨 <b>Job failed</b>!\nJob: <b>${job.senderServerName || job.serviceName || 'unknown'}</b>\nFiles: ${files.length}\nОшибка при отправке одного или нескольких файлов.`;
+      }
+      await sendTelegramMessage(msg, telegramConfig.botToken, telegramConfig.chatId);
     }
   }
 }
