@@ -314,7 +314,7 @@ async function main() {
         jobFailed = true;
       }
     }
-    // Отправка Telegram-уведомления по завершении job
+    // Send Telegram notification about job completion
     if (telegramConfig.botToken && telegramConfig.chatId) {
       const serverName = job.senderServerName || 'unknown';
       const serviceName = job.serviceName || 'unknown';
