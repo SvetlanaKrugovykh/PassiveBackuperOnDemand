@@ -84,6 +84,7 @@ app.listen({ port: PORT, host: HOST }, async (err, address) => {
   }
 
   console.log(`${new Date()}:[API] Service listening on ${address}`)
+    console.log('DEBUG_SOURCE_FILE:', process.env.DEBUG_SOURCE_FILE)
 
   // Initialize tunnel after server starts
   if (TUNNEL_ENABLED) {
