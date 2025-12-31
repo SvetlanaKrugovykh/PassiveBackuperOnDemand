@@ -2,7 +2,14 @@ require('dotenv').config()
 const { app } = require('./index')
 const fs = require('fs')
 const path = require('path')
-const TunnelClient = require('./src/tunnel')
+
+//  reverse-tunnel-client, TUNNEL_ENABLED=true
+const path = require('path')
+let TunnelClient = null
+let reverseTunnelProcess = null
+try {
+  TunnelClient = require('./src/tunnel')
+} catch {}
 
 const HOST = process.env.HOST || '127.0.0.1'
 const PORT = process.env.PORT || 7111
@@ -34,19 +41,36 @@ function setupLogging() {
   }
 }
 
+
 async function initTunnel() {
   if (!TUNNEL_ENABLED) {
     console.log('Tunnel is disabled (TUNNEL_ENABLED != true)')
     return
   }
 
-  try {
-    tunnelClient = new TunnelClient()
-    await tunnelClient.start()
-    console.log('Tunnel client initialized successfully')
-  } catch (error) {
-    console.error('Failed to initialize tunnel client:', error.message)
-    // Don't exit - allow server to run without tunnel
+  // reverse-tunnel-client.js
+  const reverseTunnelPath = path.join(__dirname, 'reverse-tunnel-client.js')
+  const fs = require('fs')
+  if (fs.existsSync(reverseTunnelPath)) {
+    console.log('Starting reverse-tunnel-client.js...')
+    const { fork } = require('child_process')
+    reverseTunnelProcess = fork(reverseTunnelPath, [], { stdio: 'inherit' })
+    reverseTunnelProcess.on('exit', (code) => {
+      console.log('reverse-tunnel-client.js exited with code', code)
+    })
+    return
+  }
+
+  // Если reverse-tunnel-client.js не найден, пробуем старый TunnelClient
+  if (TunnelClient) {
+    try {
+      tunnelClient = new TunnelClient()
+      await tunnelClient.start()
+      console.log('Tunnel client initialized successfully')
+    } catch (error) {
+      console.error('Failed to initialize tunnel client:', error.message)
+      // Don't exit - allow server to run without tunnel
+    }
   }
 }
 
@@ -71,10 +95,14 @@ app.listen({ port: PORT, host: HOST }, async (err, address) => {
 })
 
 // Graceful shutdown
+
 process.on('SIGINT', async () => {
   console.log('Received SIGINT, shutting down gracefully...')
   if (tunnelClient && tunnelClient.running) {
     await tunnelClient.stop()
+  }
+  if (reverseTunnelProcess) {
+    reverseTunnelProcess.kill()
   }
   process.exit(0)
 })
@@ -83,6 +111,9 @@ process.on('SIGTERM', async () => {
   console.log('Received SIGTERM, shutting down gracefully...')
   if (tunnelClient && tunnelClient.running) {
     await tunnelClient.stop()
+  }
+  if (reverseTunnelProcess) {
+    reverseTunnelProcess.kill()
   }
   process.exit(0)
 })
