@@ -95,31 +95,6 @@ function findFilesByPatterns(directory, patterns, dateModes = ['today', 'yesterd
     let entries = []
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true })
-          for (const file of files) {
-            let fileToSend = file;
-            // zip support
-            if (job.zip) {
-              fileToSend = await zipFile(file);
-            }
-            // Track if this file failed
-            let fileSendFailed = false;
-            try {
-              // sendFileJob returns nothing, but sets 'failed' flag if chunk fails
-              await sendFileJob({ ...job, file: fileToSend }, telegramConfig);
-              // Check if file was sent successfully by inspecting logs (not ideal, but sendFileJob sets failed=true and returns early)
-              // Instead, refactor sendFileJob to return true/false for success
-            } catch (e) {
-              fileSendFailed = true;
-            }
-            // If sendFileJob failed, mark jobFailed
-            if (fileSendFailed) {
-              jobFailed = true;
-            }
-            // optionally, remove zip after send
-            if (job.zip) {
-              try { fs.unlinkSync(fileToSend); } catch {}
-            }
-          }
   let fileList = []
   if (recursive) {
     fileList = walk(directory)
