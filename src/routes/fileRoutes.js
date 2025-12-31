@@ -1,12 +1,4 @@
 
-  module.exports = (fastify, _opts, done) => {
-    fastify.route({
-      method: 'POST',
-      url: '/assemble-status',
-      handler: fileController.assembleStatus,
-      preHandler: [isAuthorizedGuard]
-    })
-
 const fileController = require('../controllers/fileController')
 const isAuthorizedGuard = require('../guards/isAuthorizedGuard')
 const dataExchangeSchema = require('../schemas/dataExchangeSchema')
@@ -14,6 +6,12 @@ const dataChunkSchema = require('../schemas/dataChunkSchema')
 const dataUploadChunkSchema = require('../schemas/dataUploadChunkSchema')
 
 module.exports = (fastify, _opts, done) => {
+  fastify.route({
+    method: 'POST',
+    url: '/assemble-status',
+    handler: fileController.assembleStatus,
+    preHandler: [isAuthorizedGuard]
+  })
   fastify.route({
     method: 'POST',
     url: '/upload-chunk',
