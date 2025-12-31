@@ -1,3 +1,9 @@
+  fastify.route({
+    method: 'POST',
+    url: '/rotate-backup-dirs',
+    handler: fileController.rotateBackupDirsForJob,
+    preHandler: [isAuthorizedGuard]
+  })
 
 const fileController = require('../controllers/fileController')
 const isAuthorizedGuard = require('../guards/isAuthorizedGuard')

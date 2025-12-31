@@ -328,6 +328,22 @@ async function main() {
           await new Promise(res => setTimeout(res, delayBetweenFilesMs));
         }
       }
+      // After all files in job are sent and confirmed, rotate backup dirs
+      try {
+        await axios.post(`${job.serverUrl}/rotate-backup-dirs`, {
+          senderServerName: job.senderServerName,
+          serviceName: job.serviceName,
+          rotationCount: job.rotationCount || 2
+        }, {
+          headers: {
+            Authorization: job.token || config.token,
+            'Content-Type': 'application/json'
+          }
+        });
+        logToFile(`Backup rotation triggered for ${job.senderServerName}/${job.serviceName}`);
+      } catch (e) {
+        logToFile(`Failed to rotate backup dirs for ${job.senderServerName}/${job.serviceName}: ${e.message}`);
+      }
     } else if (job.archive && Array.isArray(job.archive.include)) {
       // Archive multiple folders/files with exclusions
       logToFile(`Archiving for job: ${job.senderServerName || job.serviceName}`)
