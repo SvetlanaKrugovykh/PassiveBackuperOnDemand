@@ -9,12 +9,6 @@ const dataUploadChunkSchema = require('../schemas/dataUploadChunkSchema')
 module.exports = (fastify, _opts, done) => {
   fastify.route({
     method: 'POST',
-    url: '/rotate-backup-dirs',
-    handler: fileController.rotateBackupDirsForJob,
-    preHandler: [isAuthorizedGuard]
-  })
-  fastify.route({
-    method: 'POST',
     url: '/assemble-status',
     handler: fileController.assembleStatus,
     preHandler: [isAuthorizedGuard]
