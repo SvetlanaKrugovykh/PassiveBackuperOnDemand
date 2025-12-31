@@ -235,7 +235,36 @@ async function sendFileJob(job, telegramConfig) {
     }
   }
   if (!failed) {
-    logToFile(`File ${file} sent successfully!`)
+    // Wait for server to confirm all chunks received
+    let assembled = false;
+    for (let attempt = 1; attempt <= 10; attempt++) {
+      try {
+        const resp = await axios.post(`${serverUrl}/assemble-status`, {
+          fileName,
+          numChunks,
+          senderServerName,
+          serviceName
+        }, {
+          headers: {
+            Authorization: token,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        });
+        if (resp.data && resp.data.ok) {
+          assembled = true;
+          break;
+        }
+      } catch (e) {
+        // ignore
+      }
+      await new Promise(res => setTimeout(res, 2000));
+    }
+    if (assembled) {
+      logToFile(`File ${file} sent and all chunks confirmed on server!`);
+    } else {
+      logToFile(`File ${file} sent, but server did not confirm all chunks after waiting.`);
+    }
   }
 }
 

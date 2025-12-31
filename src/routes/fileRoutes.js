@@ -1,3 +1,9 @@
+  fastify.route({
+    method: 'POST',
+    url: '/assemble-status',
+    handler: fileController.assembleStatus,
+    preHandler: [isAuthorizedGuard]
+  })
 
 const fileController = require('../controllers/fileController')
 const isAuthorizedGuard = require('../guards/isAuthorizedGuard')

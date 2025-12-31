@@ -1,3 +1,24 @@
+// Check if all chunks for a file are present (true/false)
+module.exports.assembleStatus = async function (request, reply) {
+  try {
+    const { fileName, numChunks, senderServerName, serviceName } = request.body
+    if (!fileName || !numChunks || !senderServerName || !serviceName) {
+      return reply.status(400).send({ ok: false, error: 'Missing params' })
+    }
+    const tempDir = process.env.TEMP_CATALOG || 'C:/Temp/chunks/'
+    let allExist = true
+    for (let i = 1; i <= numChunks; i++) {
+      const chunkPath = require('path').join(tempDir, `${fileName}_chunk_${i}`)
+      if (!require('fs').existsSync(chunkPath)) {
+        allExist = false
+        break
+      }
+    }
+    reply.send({ ok: allExist })
+  } catch (e) {
+    reply.status(500).send({ ok: false, error: e.message })
+  }
+}
 // Utility: try to assemble file from chunks if all received
 const fs = require('fs')
 const path = require('path')
