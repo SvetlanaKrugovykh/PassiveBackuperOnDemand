@@ -286,4 +286,3 @@ module.exports.confirmFileDeletion = async function (req, reply) {
   } catch (error) {
     reply.code(500).send({ success: false, message: 'Internal server error.' })
   }
-}
