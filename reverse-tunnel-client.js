@@ -1,10 +1,12 @@
-// Reverse Tunnel Client (HTTP only)
-// Proxies HTTP requests from the tunnel server to the local HTTP service
+// reverse-tunnel-client.js
+// Connects to a server with public IP and proxies connections to local service
+// No Russian comments and no semicolons
 
-const httpProxy = require("http-proxy")
-const http = require("http")
+const net = require("net")
 
+const SERVER_HOST = process.env.WHITE_SERVER_HOST || "127.0.0.1"
 const SERVER_PORT = parseInt(process.env.WHITE_SERVER_PORT || "5555", 10)
+const LOCAL_HOST = "127.0.0.1"
 const LOCAL_PORT = parseInt(
 	(process.env.TUNNELS || "8778:8778").split(":")[1],
 	10
@@ -16,22 +18,34 @@ if (!ENABLED) {
 	process.exit(0)
 }
 
-const proxy = httpProxy.createProxyServer({
-	target: `http://127.0.0.1:${LOCAL_PORT}`,
-	proxyTimeout: 600000,
-	timeout: 600000,
-	selfHandleResponse: false,
-})
-
-const server = http.createServer((req, res) => {
-	proxy.web(req, res, {}, (err) => {
-		res.writeHead(502)
-		res.end("Proxy error")
+function connectTunnel() {
+	const tunnelSocket = net.connect(SERVER_PORT, SERVER_HOST, () => {
+		console.log(`[Tunnel] connected to server ${SERVER_HOST}:${SERVER_PORT}`)
 	})
-})
 
-server.listen(SERVER_PORT, () => {
-	console.log(
-		`[TunnelClient] HTTP proxy listening on port ${SERVER_PORT}, forwarding to local service on port ${LOCAL_PORT}`
-	)
-})
+	tunnelSocket.on("data", () => {
+		// On NEW_CONN from server, open connection to local service
+		const localSocket = net.connect(LOCAL_PORT, LOCAL_HOST, () => {
+			// Pipe data between tunnel and local service
+			tunnelSocket.pipe(localSocket, { end: false })
+			localSocket.pipe(tunnelSocket, { end: false })
+			tunnelSocket.write("READY")
+		})
+		localSocket.on("error", (err) => {
+			console.log("[Tunnel] local connection error", err)
+			localSocket.destroy()
+		})
+	})
+
+	tunnelSocket.on("close", () => {
+		console.log("[Tunnel] tunnel closed, reconnecting in 3s")
+		setTimeout(connectTunnel, 3000)
+	})
+
+	tunnelSocket.on("error", (err) => {
+		console.log("[Tunnel] error", err)
+		tunnelSocket.destroy()
+	})
+}
+
+connectTunnel()
