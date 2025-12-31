@@ -51,6 +51,64 @@ async function tryAssembleFile(fileName, numChunks, senderServerName, serviceNam
   const outDir = path.join(baseDir, '0')
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true })
   const outPath = path.join(outDir, fileName)
+  for (let i = 1; i <= numChunks; i++) {
+    const chunkPath = path.join(tempDir, `${fileName}_chunk_${i}`)
+    if (!fs.existsSync(chunkPath)) return // Not all chunks yet
+  }
+  // All chunks exist, assemble
+  try {
+    if (fs.existsSync(outPath)) fs.unlinkSync(outPath)
+    for (let i = 1; i <= numChunks; i++) {
+      const chunkPath = path.join(tempDir, `${fileName}_chunk_${i}`)
+      const data = fs.readFileSync(chunkPath)
+      fs.appendFileSync(outPath, data)
+      fs.unlinkSync(chunkPath)
+    }
+    // Check final file size
+    const expectedSize = numChunks * (parseInt(process.env.CHUNK_SIZE) || 52428800)
+    const actualSize = fs.statSync(outPath).size
+    if (Number(process.env.DEBUG_LEVEL) > 0) {
+      console.log(`[Assemble] File: ${outPath}, expected <= ${expectedSize}, actual: ${actualSize}`)
+    }
+    // If last chunk is smaller, allow actualSize < expectedSize
+    if (actualSize > expectedSize || actualSize === 0) {
+      console.error('[Assemble] ERROR: Assembled file size mismatch!')
+      if (process.env.DEBUG_SOURCE_FILE && process.env.DEBUG_SOURCE_FILE.startsWith('true')) {
+        // Prepend '!' to the file for debug analysis
+        try {
+          const origData = fs.readFileSync(outPath)
+          const fd = fs.openSync(outPath, 'w')
+          fs.writeSync(fd, Buffer.from('!'))
+          fs.writeSync(fd, origData, 0, origData.length, 1)
+          fs.closeSync(fd)
+          console.log(`[Assemble] DEBUG_SOURCE_FILE: prepended '!' to file ${outPath}`)
+        } catch (e) {
+          console.error(`[Assemble] Failed to prepend '!' to file: ${e.message}`)
+        }
+      } else {
+        try { fs.unlinkSync(outPath) } catch {}
+      }
+    }
+  } catch (err) {
+    console.error('Error assembling file:', err)
+    if (process.env.DEBUG_SOURCE_FILE && process.env.DEBUG_SOURCE_FILE.startsWith('tru')) {
+      // Do not delete file, but try to prepend '!'
+      try {
+        if (fs.existsSync(outPath)) {
+          const origData = fs.readFileSync(outPath)
+          const fd = fs.openSync(outPath, 'w')
+          fs.writeSync(fd, Buffer.from('!'))
+          fs.writeSync(fd, origData, 0, origData.length, 1)
+          fs.closeSync(fd)
+          console.log(`[Assemble] DEBUG_SOURCE_FILE: prepended '!' to file ${outPath}`)
+        }
+      } catch (e) {
+        console.error(`[Assemble] Failed to prepend '!' to file: ${e.message}`)
+      }
+    } else {
+      try { fs.unlinkSync(outPath) } catch {}
+    }
+  }
 }
 
 // Call this after all files in a job are uploaded to rotate backup directories
