@@ -154,7 +154,8 @@ async function sendFileJob(job, telegramConfig) {
     senderServerName,
     serviceName,
     chunkSize = 52428800,
-    maxRetries = 3
+    maxRetries = 3,
+    delayBetweenChunksMs = 0
   } = job
   // Use job.token if present, otherwise use config.token
   const config = loadConfig()
@@ -193,6 +194,9 @@ async function sendFileJob(job, telegramConfig) {
       senderServerName,
       serviceName,
       sha256: hash
+    }
+    if (delayBetweenChunksMs && delayBetweenChunksMs > 0) {
+      await new Promise(res => setTimeout(res, delayBetweenChunksMs));
     }
     let sent = false
     let attempt = 0
@@ -245,6 +249,7 @@ async function main() {
     } catch {}
   }
   const telegramConfig = getTelegramConfig()
+  const delayBetweenFilesMs = (config.delayBetweenFilesMs !== undefined) ? config.delayBetweenFilesMs : 0;
   for (const job of jobs) {
     let jobFailed = false
     let files = []
@@ -274,20 +279,24 @@ async function main() {
         }
         continue
       }
-      for (const file of files) {
-        let fileToSend = file
+      for (let i = 0; i < files.length; i++) {
+        let file = files[i];
+        let fileToSend = file;
         // zip support
         if (job.zip) {
-          fileToSend = await zipFile(file)
+          fileToSend = await zipFile(file);
         }
         try {
-          await sendFileJob({ ...job, file: fileToSend }, telegramConfig)
+          await sendFileJob({ ...job, file: fileToSend }, telegramConfig);
         } catch (e) {
-          jobFailed = true
+          jobFailed = true;
         }
         // optionally, remove zip after send
         if (job.zip) {
           try { fs.unlinkSync(fileToSend) } catch {}
+        }
+        if (delayBetweenFilesMs && delayBetweenFilesMs > 0 && i < files.length - 1) {
+          await new Promise(res => setTimeout(res, delayBetweenFilesMs));
         }
       }
     } else if (job.archive && Array.isArray(job.archive.include)) {
