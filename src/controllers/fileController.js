@@ -52,12 +52,42 @@ async function tryAssembleFile(fileName, numChunks, senderServerName, serviceNam
     }
     // If last chunk is smaller, allow actualSize < expectedSize
     if (actualSize > expectedSize || actualSize === 0) {
-      console.error('[Assemble] ERROR: Assembled file size mismatch! Deleting file.')
-      try { fs.unlinkSync(outPath) } catch {}
+      console.error('[Assemble] ERROR: Assembled file size mismatch!')
+      if (process.env.DEBUG_SOURCE_FILE === 'true') {
+        // Prepend '!' to the file for debug analysis
+        try {
+          const origData = fs.readFileSync(outPath)
+          const fd = fs.openSync(outPath, 'w')
+          fs.writeSync(fd, Buffer.from('!'))
+          fs.writeSync(fd, origData, 0, origData.length, 1)
+          fs.closeSync(fd)
+          console.log(`[Assemble] DEBUG_SOURCE_FILE=trueb: prepended '!' to file ${outPath}`)
+        } catch (e) {
+          console.error(`[Assemble] Failed to prepend '!' to file: ${e.message}`)
+        }
+      } else {
+        try { fs.unlinkSync(outPath) } catch {}
+      }
     }
   } catch (err) {
     console.error('Error assembling file:', err)
-    try { fs.unlinkSync(outPath) } catch {}
+    if (process.env.DEBUG_SOURCE_FILE === 'trueb') {
+      // Do not delete file, but try to prepend '!'
+      try {
+        if (fs.existsSync(outPath)) {
+          const origData = fs.readFileSync(outPath)
+          const fd = fs.openSync(outPath, 'w')
+          fs.writeSync(fd, Buffer.from('!'))
+          fs.writeSync(fd, origData, 0, origData.length, 1)
+          fs.closeSync(fd)
+          console.log(`[Assemble] DEBUG_SOURCE_FILE=trueb: prepended '!' to file ${outPath}`)
+        }
+      } catch (e) {
+        console.error(`[Assemble] Failed to prepend '!' to file: ${e.message}`)
+      }
+    } else {
+      try { fs.unlinkSync(outPath) } catch {}
+    }
   }
 }
 module.exports.uploadChunk = async function (request, reply) {
