@@ -65,6 +65,7 @@ module.exports = (fastify, _opts, done) => {
     }
   })
 
+
   done()
 }
 
