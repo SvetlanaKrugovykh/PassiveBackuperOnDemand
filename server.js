@@ -4,7 +4,6 @@ const fs = require('fs')
 const path = require('path')
 
 //  reverse-tunnel-client, TUNNEL_ENABLED=true
-const path = require('path')
 let TunnelClient = null
 let reverseTunnelProcess = null
 try {
@@ -49,7 +48,7 @@ async function initTunnel() {
   }
 
   // reverse-tunnel-client.js
-  const reverseTunnelPath = path.join(__dirname, 'reverse-tunnel-client.js')
+  const reverseTunnelPath = './reverse-tunnel-client.js'
   const fs = require('fs')
   if (fs.existsSync(reverseTunnelPath)) {
     console.log('Starting reverse-tunnel-client.js...')
