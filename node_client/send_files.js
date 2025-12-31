@@ -95,22 +95,31 @@ function findFilesByPatterns(directory, patterns, dateModes = ['today', 'yesterd
     let entries = []
     try {
       entries = fs.readdirSync(dir, { withFileTypes: true })
-    } catch (e) {
-      return []
-    }
-    let found = []
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name)
-      if (entry.isDirectory()) {
-        if (recursive) {
-          found = found.concat(walk(fullPath))
-        }
-      } else {
-        found.push(fullPath)
-      }
-    }
-    return found
-  }
+          for (const file of files) {
+            let fileToSend = file;
+            // zip support
+            if (job.zip) {
+              fileToSend = await zipFile(file);
+            }
+            // Track if this file failed
+            let fileSendFailed = false;
+            try {
+              // sendFileJob returns nothing, but sets 'failed' flag if chunk fails
+              await sendFileJob({ ...job, file: fileToSend }, telegramConfig);
+              // Check if file was sent successfully by inspecting logs (not ideal, but sendFileJob sets failed=true and returns early)
+              // Instead, refactor sendFileJob to return true/false for success
+            } catch (e) {
+              fileSendFailed = true;
+            }
+            // If sendFileJob failed, mark jobFailed
+            if (fileSendFailed) {
+              jobFailed = true;
+            }
+            // optionally, remove zip after send
+            if (job.zip) {
+              try { fs.unlinkSync(fileToSend); } catch {}
+            }
+          }
   let fileList = []
   if (recursive) {
     fileList = walk(directory)
@@ -188,45 +197,48 @@ async function sendFileJob(job, telegramConfig) {
     const data = {
       fileName,
       chunkId: Number(chunkId), // ensure integer
-      numChunks,
-      content: b64,
-      senderServerName,
-      serviceName,
-      sha256: hash
-    };
-    let sent = false;
-    let attempt = 0;
-    while (!sent && attempt < maxRetries) {
-      try {
-        const resp = await axios.post(`${serverUrl}/upload-chunk`, data, {
-          headers: {
-            Authorization: token,
-            'Content-Type': 'application/json'
-          },
-          timeout: 300000 // 5 minutes per chunk
-        })
-        logToFile(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`)
-        console.log(`Sent chunk ${chunkId}/${numChunks} for ${fileName}`)
-        sent = true
-        chunkId++
-      } catch (e) {
-        attempt++
-        logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
-        console.error(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
-        if (attempt >= maxRetries) {
-          logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`)
-          failed = true
-          // Send Telegram notification about failure (connection issue)
-          if (telegramConfig.botToken && telegramConfig.chatId) {
-            await sendTelegramMessage(
-              '🚨 <b>File transfer failed</b>!\nClient <b>' + senderServerName + '</b> could not connect to the server for file <b>' + fileName + '</b>. Please check the server status.',
-              telegramConfig.botToken,
-              telegramConfig.chatId
-            )
+          let sent = false;
+          let attempt = 0;
+          while (!sent && attempt < maxRetries) {
+            try {
+              const resp = await axios.post(`${serverUrl}/upload-chunk`, data, {
+                headers: {
+                  Authorization: token,
+                  'Content-Type': 'application/json'
+                },
+                timeout: 300000 // 5 minutes per chunk
+              });
+              logToFile(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`);
+              console.log(`Sent chunk ${chunkId}/${numChunks} for ${fileName}`);
+              sent = true;
+              chunkId++;
+            } catch (e) {
+              attempt++;
+              logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`);
+              console.error(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`);
+              if (attempt >= maxRetries) {
+                logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`);
+                failed = true;
+                // Send Telegram notification about failure (connection issue)
+                if (telegramConfig.botToken && telegramConfig.chatId) {
+                  await sendTelegramMessage(
+                    '🚨 <b>File transfer failed</b>!\nClient <b>' + senderServerName + '</b> could not connect to the server for file <b>' + fileName + '</b>. Please check the server status.',
+                    telegramConfig.botToken,
+                    telegramConfig.chatId
+                  );
+                }
+                return false; // Return false to indicate failure
+              }
+              await new Promise(res => setTimeout(res, 1000 * attempt)); // Exponential backoff
+            }
           }
-          return
         }
-        await new Promise(res => setTimeout(res, 1000 * attempt)) // Exponential backoff
+        if (!failed) {
+          logToFile(`File ${file} sent successfully!`);
+          return true; // Return true if successful
+        }
+        // If failed, return false
+        return false;
       }
     }
   }
@@ -281,7 +293,10 @@ async function main() {
           fileToSend = await zipFile(file)
         }
         try {
-          await sendFileJob({ ...job, file: fileToSend }, telegramConfig)
+          const result = await sendFileJob({ ...job, file: fileToSend }, telegramConfig);
+          if (!result) {
+            jobFailed = true;
+          }
         } catch (e) {
           jobFailed = true;
         }
