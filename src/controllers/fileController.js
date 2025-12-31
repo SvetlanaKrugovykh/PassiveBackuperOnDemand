@@ -51,21 +51,23 @@ async function tryAssembleFile(fileName, numChunks, senderServerName, serviceNam
   const outDir = path.join(baseDir, '0')
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true })
   const outPath = path.join(outDir, fileName)
-  // Call this after all files in a job are uploaded to rotate backup directories
-  module.exports.rotateBackupDirsForJob = async function (request, reply) {
-    try {
-      const { senderServerName, serviceName, rotationCount = 2 } = request.body;
-      if (!senderServerName || !serviceName) {
-        return reply.status(400).send({ success: false, message: 'Missing params' });
-      }
-      const storageRoot = process.env.STORAGE_ROOT_DIR || 'D:/PassiveStorage/';
-      const baseDir = path.join(storageRoot, senderServerName, serviceName);
-      rotateBackupDirs(baseDir, rotationCount);
-      reply.send({ success: true });
-    } catch (e) {
-      reply.status(500).send({ success: false, message: e.message });
+}
+
+// Call this after all files in a job are uploaded to rotate backup directories
+module.exports.rotateBackupDirsForJob = async function (request, reply) {
+  try {
+    const { senderServerName, serviceName, rotationCount = 2 } = request.body;
+    if (!senderServerName || !serviceName) {
+      return reply.status(400).send({ success: false, message: 'Missing params' });
     }
+    const storageRoot = process.env.STORAGE_ROOT_DIR || 'D:/PassiveStorage/';
+    const baseDir = path.join(storageRoot, senderServerName, serviceName);
+    rotateBackupDirs(baseDir, rotationCount);
+    reply.send({ success: true });
+  } catch (e) {
+    reply.status(500).send({ success: false, message: e.message });
   }
+}
   for (let i = 1; i <= numChunks; i++) {
     const chunkPath = path.join(tempDir, `${fileName}_chunk_${i}`)
     if (!fs.existsSync(chunkPath)) return // Not all chunks yet
