@@ -18,6 +18,9 @@ if (!ENABLED) {
 
 const proxy = httpProxy.createProxyServer({
 	target: `http://127.0.0.1:${LOCAL_PORT}`,
+	proxyTimeout: 600000,
+	timeout: 600000,
+	selfHandleResponse: false,
 })
 
 const server = http.createServer((req, res) => {
