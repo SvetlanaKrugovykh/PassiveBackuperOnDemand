@@ -146,10 +146,7 @@ module.exports.uploadChunk = async function (request, reply) {
     // Try to assemble file if all chunks received
     try {
       await tryAssembleFile(fileName, numChunks, senderServerName, serviceName, rotationCount || 2)
-      // Classic: rotate after each file assembly
-      const storageRoot = process.env.STORAGE_ROOT_DIR || 'D:/PassiveStorage/'
-      const baseDir = path.join(storageRoot, senderServerName, serviceName)
-      rotateBackupDirs(baseDir, rotationCount || 2)
+      // Rotation is now only triggered via /rotate-backup-dirs endpoint after all files in a job
     } catch {}
     return reply.send({ success: true, message: `Chunk ${chunkId} for ${fileName} uploaded.` })
   } catch (error) {
