@@ -1,3 +1,18 @@
+// Rotate backup directories after all files in a job are uploaded
+module.exports.rotateBackupDirsForJob = async function (request, reply) {
+  try {
+    const { senderServerName, serviceName, rotationCount = 2 } = request.body;
+    if (!senderServerName || !serviceName) {
+      return reply.status(400).send({ success: false, message: 'Missing params' });
+    }
+    const storageRoot = process.env.STORAGE_ROOT_DIR || 'D:/PassiveStorage/';
+    const baseDir = path.join(storageRoot, senderServerName, serviceName);
+    rotateBackupDirs(baseDir, rotationCount);
+    reply.send({ success: true });
+  } catch (e) {
+    reply.status(500).send({ success: false, message: e.message });
+  }
+}
 // Check if all chunks for a file are present (true/false)
 module.exports.assembleStatus = async function (request, reply) {
   try {

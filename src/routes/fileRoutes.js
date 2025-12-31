@@ -1,5 +1,3 @@
-
-
 const fileController = require('../controllers/fileController')
 const isAuthorizedGuard = require('../guards/isAuthorizedGuard')
 const dataExchangeSchema = require('../schemas/dataExchangeSchema')
@@ -13,6 +11,14 @@ module.exports = (fastify, _opts, done) => {
     handler: fileController.assembleStatus,
     preHandler: [isAuthorizedGuard]
   })
+  
+  fastify.route({
+		method: "POST",
+		url: "/rotate-backup-dirs",
+		handler: fileController.rotateBackupDirsForJob,
+		preHandler: [isAuthorizedGuard],
+	})
+
   fastify.route({
     method: 'POST',
     url: '/upload-chunk',
