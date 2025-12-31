@@ -9,60 +9,151 @@ function zipFile(inputPath) {
     archive.on('error', reject)
     archive.pipe(output)
     if (fs.lstatSync(inputPath).isDirectory()) {
-      function walk(dir) {
-        let entries = []
-        try {
-          entries = fs.readdirSync(dir, { withFileTypes: true })
-        } catch (e) {
-          return []
-        }
-        let found = []
-        for (const entry of entries) {
-          const fullPath = path.join(dir, entry.name)
-          if (entry.isDirectory()) {
-            if (recursive) {
-              found = found.concat(walk(fullPath))
-            }
-          } else {
-            found.push(fullPath)
-          }
-        }
-        return found
-      }
-      let fileList = []
-      if (recursive) {
-        fileList = walk(directory)
+      archive.directory(inputPath, path.basename(inputPath))
+    } else {
+      archive.file(inputPath, { name: path.basename(inputPath) })
+    }
+    archive.finalize()
+  })
+}
+
+// Archive multiple folders/files with exclusions and custom output dir
+async function zipMultipleWithExclude({ include, exclude = [], format = 'zip', zip_catalog }) {
+  const archiveName = `backup_${Date.now()}.${format}`
+  const outDir = zip_catalog && typeof zip_catalog === 'string' ? zip_catalog : require('os').tmpdir()
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true })
+  const outputZip = path.join(outDir, archiveName)
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(outputZip)
+    const archive = archiver(format, { zlib: { level: 9 } })
+    output.on('close', () => resolve(outputZip))
+    archive.on('error', reject)
+    archive.pipe(output)
+    const shouldExclude = (filePath) => exclude.some(ex => filePath.startsWith(path.normalize(ex)))
+    for (const inc of include) {
+      const stat = fs.lstatSync(inc)
+      if (stat.isDirectory()) {
+        archive.directory(inc, path.basename(inc), (entry) => {
+          const fullPath = path.join(inc, entry.name)
+          return shouldExclude(fullPath) ? false : entry
+        })
       } else {
-        try {
-          fileList = fs.readdirSync(directory).map(f => path.join(directory, f))
-        } catch (e) {
-          fileList = []
+        if (!shouldExclude(inc)) archive.file(inc, { name: path.basename(inc) })
+      }
+    }
+    archive.finalize()
+  })
+}
+const fs = require('fs')
+const sendTelegramMessage = require('./send_telegram')
+const path = require('path')
+const axios = require('axios')
+// const cron = require('node-cron')
+const crypto = require('crypto')
+// Simple file logger
+function logToFile(msg) {
+  const logDir = path.join(__dirname, '../logs')
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true })
+  const logPath = path.join(logDir, 'client.log')
+  const line = `[${new Date().toISOString()}] ${msg}\n`
+  fs.appendFileSync(logPath, line)
+  console.log(line.trim())
+}
+
+const configPath = path.join(__dirname, 'client.config.json')
+
+function loadConfig() {
+  return JSON.parse(fs.readFileSync(configPath, 'utf-8'))
+}
+
+function getTelegramConfig() {
+  const config = loadConfig()
+  return {
+    botToken: config.telegramBotToken,
+    chatId: config.telegramChatId
+  }
+}
+
+function getDateStr(offset = 0, format = 'yyyy_mm_dd') {
+  const d = new Date()
+  d.setDate(d.getDate() + offset)
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  // Support different date formats
+  return format
+    .replace(/yyyy/g, yyyy)
+    .replace(/mm/g, mm)
+    .replace(/dd/g, dd)
+}
+
+function findFilesByPatterns(directory, patterns, dateModes = ['today', 'yesterday'], recursive = false) {
+  let files = []
+  if (!Array.isArray(patterns)) patterns = [patterns]
+  if (!Array.isArray(dateModes)) dateModes = [dateModes]
+  function walk(dir) {
+    let entries = []
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true })
+    } catch (e) {
+      return []
+    }
+    let found = []
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (recursive) {
+          found = found.concat(walk(fullPath))
+        }
+      } else {
+        found.push(fullPath)
+      }
+    }
+    return found
+  }
+  let fileList = []
+  if (recursive) {
+    fileList = walk(directory)
+  } else {
+    try {
+      fileList = fs.readdirSync(directory).map(f => path.join(directory, f))
+    } catch (e) {
+      fileList = []
+    }
+  }
+  for (const pattern of patterns) {
+    let dateFormat = 'yyyy_mm_dd'
+    let patternTemplate = pattern
+    const dateMatch = pattern.match(/\{date(?::([^}]+))?}/)
+    if (dateMatch) {
+      if (dateMatch[1]) dateFormat = dateMatch[1]
+      patternTemplate = pattern.replace(/\{date(?::[^}]+)?}/, '{date}')
+    }
+    for (const mode of dateModes) {
+      let offset = 0
+      if (mode === 'yesterday') offset = -1
+      if (mode === 'today') offset = 0
+      const dateStr = getDateStr(offset, dateFormat)
+      const mask = patternTemplate.replace('{date}', dateStr)
+      const regex = new RegExp('^' + mask.replace(/\./g, '\.').replace(/\*/g, '.*') + '$')
+      for (const filePath of fileList) {
+        const fileName = path.basename(filePath)
+        if (regex.test(fileName)) {
+          files.push(filePath)
         }
       }
-      for (const pattern of patterns) {
-        let dateFormat = 'yyyy_mm_dd'
-        let patternTemplate = pattern
-        const dateMatch = pattern.match(/\{date(?::([^}]+))?}/)
-        if (dateMatch) {
-          if (dateMatch[1]) dateFormat = dateMatch[1]
-          patternTemplate = pattern.replace(/\{date(?::[^}]+)?}/, '{date}')
-        }
-        for (const mode of dateModes) {
-          let offset = 0
-          if (mode === 'yesterday') offset = -1
-          if (mode === 'today') offset = 0
-          const dateStr = getDateStr(offset, dateFormat)
-          const mask = patternTemplate.replace('{date}', dateStr)
-          const regex = new RegExp('^' + mask.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$')
-          for (const filePath of fileList) {
-            const fileName = path.basename(filePath)
-            if (regex.test(fileName)) {
-              files.push(filePath)
-            }
-          }
-        }
-      }
-      return [...new Set(files)]
+    }
+  }
+  return [...new Set(files)]
+}
+
+async function sendFileJob(job, telegramConfig) {
+  const {
+    file,
+    serverUrl,
+    senderServerName,
+    serviceName,
+    chunkSize = 52428800,
     maxRetries = 3
   } = job
   // Use job.token if present, otherwise use config.token
@@ -97,48 +188,45 @@ function zipFile(inputPath) {
     const data = {
       fileName,
       chunkId: Number(chunkId), // ensure integer
-          let sent = false
-          let attempt = 0
-          while (!sent && attempt < maxRetries) {
-            try {
-              const resp = await axios.post(`${serverUrl}/upload-chunk`, data, {
-                headers: {
-                  Authorization: token,
-                  'Content-Type': 'application/json'
-                },
-                timeout: 300000 // 5 minutes per chunk
-              });
-              logToFile(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`)
-              console.log(`Sent chunk ${chunkId}/${numChunks} for ${fileName}`)
-              sent = true
-              chunkId++
-            } catch (e) {
-              attempt++;
-              logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
-              console.error(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
-              if (attempt >= maxRetries) {
-                logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`)
-                failed = true
-                // Send Telegram notification about failure (connection issue)
-                if (telegramConfig.botToken && telegramConfig.chatId) {
-                  await sendTelegramMessage(
-                    '🚨 <b>File transfer failed</b>!\nClient <b>' + senderServerName + '</b> could not connect to the server for file <b>' + fileName + '</b>. Please check the server status.',
-                    telegramConfig.botToken,
-                    telegramConfig.chatId
-                  );
-                }
-                return false; // Return false to indicate failure
-              }
-              await new Promise(res => setTimeout(res, 1000 * attempt)); // Exponential backoff
-            }
+      numChunks,
+      content: b64,
+      senderServerName,
+      serviceName,
+      sha256: hash
+    }
+    let sent = false
+    let attempt = 0
+    while (!sent && attempt < maxRetries) {
+      try {
+        const resp = await axios.post(`${serverUrl}/upload-chunk`, data, {
+          headers: {
+            Authorization: token,
+            'Content-Type': 'application/json'
+          },
+          timeout: 300000 // 5 minutes per chunk
+        })
+        logToFile(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`)
+        console.log(`Sent chunk ${chunkId}/${numChunks} for ${fileName}`)
+        sent = true
+        chunkId++
+      } catch (e) {
+        attempt++
+        logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
+        console.error(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
+        if (attempt >= maxRetries) {
+          logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`)
+          failed = true
+          // Send Telegram notification about failure (connection issue)
+          if (telegramConfig.botToken && telegramConfig.chatId) {
+            await sendTelegramMessage(
+              '🚨 <b>File transfer failed</b>!\nClient <b>' + senderServerName + '</b> could not connect to the server for file <b>' + fileName + '</b>. Please check the server status.',
+              telegramConfig.botToken,
+              telegramConfig.chatId
+            )
           }
+          return
         }
-        if (!failed) {
-          logToFile(`File ${file} sent successfully!`);
-          return true // Return true if successful
-        }
-        // If failed, return false
-        return false
+        await new Promise(res => setTimeout(res, 1000 * attempt)) // Exponential backoff
       }
     }
   }
@@ -158,8 +246,8 @@ async function main() {
   }
   const telegramConfig = getTelegramConfig()
   for (const job of jobs) {
-    let jobFailed = false;
-    let files = [];
+    let jobFailed = false
+    let files = []
     // Check runEveryNDays logic
     if (job.runEveryNDays && Number.isInteger(job.runEveryNDays) && job.runEveryNDays > 1) {
       const now = new Date()
@@ -193,12 +281,9 @@ async function main() {
           fileToSend = await zipFile(file)
         }
         try {
-          const result = await sendFileJob({ ...job, file: fileToSend }, telegramConfig);
-          if (!result) {
-            jobFailed = true;
-          }
+          await sendFileJob({ ...job, file: fileToSend }, telegramConfig)
         } catch (e) {
-          jobFailed = true;
+          jobFailed = true
         }
         // optionally, remove zip after send
         if (job.zip) {
@@ -212,34 +297,34 @@ async function main() {
         ...job.archive,
         zip_catalog: job.zip_catalog
       })
-      files = [archivePath];
+      files = [archivePath]
       try {
         await sendFileJob({ ...job, file: archivePath }, telegramConfig)
       } catch (e) {
-        jobFailed = true;
+        jobFailed = true
       }
       try { fs.unlinkSync(archivePath) } catch {}
     } else if (job.file) {
       // Standard mode - send specific file
       logToFile(`Sending single file: ${job.file}`)
-      files = [job.file];
+      files = [job.file]
       try {
         await sendFileJob(job, telegramConfig)
       } catch (e) {
-        jobFailed = true;
+        jobFailed = true
       }
     }
     // Send Telegram notification about job completion
     if (telegramConfig.botToken && telegramConfig.chatId) {
-      const serverName = job.senderServerName || 'unknown';
-      const serviceName = job.serviceName || 'unknown';
-      let msg = '';
+      const serverName = job.senderServerName || 'unknown'
+      const serviceName = job.serviceName || 'unknown'
+      let msg = ''
       if (!jobFailed) {
-        msg = `✅ <b>Backup Job Completed Successfully!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files sent:</b> <b>${files.length}</b>\n\n<i>All files have been successfully delivered to the server.</i>`;
+        msg = `✅ <b>Backup Job Completed Successfully!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files sent:</b> <b>${files.length}</b>\n\n<i>All files have been successfully delivered to the server.</i>`
       } else {
-        msg = `🚨 <b>Backup Job Failed!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files processed:</b> <b>${files.length}</b>\n\n<i>Error occurred while sending one or more files.</i>`;
+        msg = `🚨 <b>Backup Job Failed!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files processed:</b> <b>${files.length}</b>\n\n<i>Error occurred while sending one or more files.</i>`
       }
-      await sendTelegramMessage(msg, telegramConfig.botToken, telegramConfig.chatId);
+      await sendTelegramMessage(msg, telegramConfig.botToken, telegramConfig.chatId)
     }
   }
 }
