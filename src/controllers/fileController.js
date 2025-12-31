@@ -53,7 +53,7 @@ async function tryAssembleFile(fileName, numChunks, senderServerName, serviceNam
     // If last chunk is smaller, allow actualSize < expectedSize
     if (actualSize > expectedSize || actualSize === 0) {
       console.error('[Assemble] ERROR: Assembled file size mismatch!')
-      if (process.env.DEBUG_SOURCE_FILE === 'true') {
+      if (process.env.DEBUG_SOURCE_FILE && process.env.DEBUG_SOURCE_FILE.startsWith('true')) {
         // Prepend '!' to the file for debug analysis
         try {
           const origData = fs.readFileSync(outPath)
@@ -61,7 +61,7 @@ async function tryAssembleFile(fileName, numChunks, senderServerName, serviceNam
           fs.writeSync(fd, Buffer.from('!'))
           fs.writeSync(fd, origData, 0, origData.length, 1)
           fs.closeSync(fd)
-          console.log(`[Assemble] DEBUG_SOURCE_FILE=trueb: prepended '!' to file ${outPath}`)
+          console.log(`[Assemble] DEBUG_SOURCE_FILE: prepended '!' to file ${outPath}`)
         } catch (e) {
           console.error(`[Assemble] Failed to prepend '!' to file: ${e.message}`)
         }
@@ -71,7 +71,7 @@ async function tryAssembleFile(fileName, numChunks, senderServerName, serviceNam
     }
   } catch (err) {
     console.error('Error assembling file:', err)
-    if (process.env.DEBUG_SOURCE_FILE === 'trueb') {
+    if (process.env.DEBUG_SOURCE_FILE && process.env.DEBUG_SOURCE_FILE.startsWith('tru')) {
       // Do not delete file, but try to prepend '!'
       try {
         if (fs.existsSync(outPath)) {
@@ -80,7 +80,7 @@ async function tryAssembleFile(fileName, numChunks, senderServerName, serviceNam
           fs.writeSync(fd, Buffer.from('!'))
           fs.writeSync(fd, origData, 0, origData.length, 1)
           fs.closeSync(fd)
-          console.log(`[Assemble] DEBUG_SOURCE_FILE=trueb: prepended '!' to file ${outPath}`)
+          console.log(`[Assemble] DEBUG_SOURCE_FILE: prepended '!' to file ${outPath}`)
         }
       } catch (e) {
         console.error(`[Assemble] Failed to prepend '!' to file: ${e.message}`)
