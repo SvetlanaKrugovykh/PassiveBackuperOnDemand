@@ -147,7 +147,7 @@ function findFilesByPatterns(directory, patterns, dateModes = ['today', 'yesterd
   return [...new Set(files)]
 }
 
-async function sendFileJob(job, telegramConfig) {
+async function sendFileJob(job, telegramConfig, serverUnavailableRef) {
   const {
     file,
     serverUrl,
@@ -185,6 +185,11 @@ async function sendFileJob(job, telegramConfig) {
   let chunkId = 1
   let failed = false
   for await (const chunk of readStream) {
+    if (serverUnavailableRef && serverUnavailableRef.value) {
+          logToFile(`Server already marked as unavailable, skipping file: ${fileName}`)
+      failed = true
+      break
+    }
     const b64 = chunk.toString('base64')
     const data = {
       fileName,
@@ -196,7 +201,7 @@ async function sendFileJob(job, telegramConfig) {
       sha256: hash
     }
     if (delayBetweenChunksMs && delayBetweenChunksMs > 0) {
-      await new Promise(res => setTimeout(res, delayBetweenChunksMs));
+      await new Promise(res => setTimeout(res, delayBetweenChunksMs))
     }
     let sent = false
     let attempt = 0
@@ -220,8 +225,12 @@ async function sendFileJob(job, telegramConfig) {
         if (attempt >= maxRetries) {
           logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`)
           failed = true
-          // Send Telegram notification about failure (connection issue)
-          if (telegramConfig.botToken && telegramConfig.chatId) {
+
+          if (serverUnavailableRef) {
+            serverUnavailableRef.value = true
+          }
+
+          if (telegramConfig.botToken && telegramConfig.chatId && (!serverUnavailableRef || !serverUnavailableRef.value)) {
             await sendTelegramMessage(
               '🚨 <b>File transfer failed</b>!\nClient <b>' + senderServerName + '</b> could not connect to the server for file <b>' + fileName + '</b>. Please check the server status.',
               telegramConfig.botToken,
@@ -234,7 +243,7 @@ async function sendFileJob(job, telegramConfig) {
       }
     }
   }
-  if (!failed) {
+  if (!failed && (!serverUnavailableRef || !serverUnavailableRef.value)) {
     // Wait for server to confirm all chunks received
     let assembled = false;
     for (let attempt = 1; attempt <= 10; attempt++) {
@@ -261,9 +270,9 @@ async function sendFileJob(job, telegramConfig) {
       await new Promise(res => setTimeout(res, 2000));
     }
     if (assembled) {
-      logToFile(`File ${file} sent and all chunks confirmed on server!`);
+      logToFile(`File ${file} sent and all chunks confirmed on server!`)
     } else {
-      logToFile(`File ${file} sent, but server did not confirm all chunks after waiting.`);
+      logToFile(`File ${file} sent, but server did not confirm all chunks after waiting.`)
     }
   }
 }
@@ -282,6 +291,11 @@ async function main() {
   for (const job of jobs) {
     let jobFailed = false
     let files = []
+    let filesTransferred = 0
+    let filesNotTransferred = 0
+    let serverUnavailableRef = { value: false }
+    let consecutiveServerFails = 0
+    const maxConsecutiveFails = 3 // after 3 consecutive fails, server is considered unavailable
     // Check runEveryNDays logic
     if (job.runEveryNDays && Number.isInteger(job.runEveryNDays) && job.runEveryNDays > 1) {
       const now = new Date()
@@ -315,34 +329,54 @@ async function main() {
         if (job.zip) {
           fileToSend = await zipFile(file);
         }
+        if (serverUnavailableRef.value) {
+          filesNotTransferred += (files.length - i)
+          break
+        }
         try {
-          await sendFileJob({ ...job, file: fileToSend }, telegramConfig);
+          await sendFileJob({ ...job, file: fileToSend }, telegramConfig, serverUnavailableRef)
+          if (!serverUnavailableRef.value) {
+            filesTransferred++
+            consecutiveServerFails = 0
+          } else {
+            filesNotTransferred++
+            consecutiveServerFails++
+          }
         } catch (e) {
-          jobFailed = true;
+          jobFailed = true
+          filesNotTransferred++
+          consecutiveServerFails++
+        }
+        if (consecutiveServerFails >= maxConsecutiveFails) {
+          serverUnavailableRef.value = true
+          filesNotTransferred += (files.length - i - 1)
+          break
         }
         // optionally, remove zip after send
         if (job.zip) {
           try { fs.unlinkSync(fileToSend) } catch {}
         }
         if (delayBetweenFilesMs && delayBetweenFilesMs > 0 && i < files.length - 1) {
-          await new Promise(res => setTimeout(res, delayBetweenFilesMs));
+          await new Promise(res => setTimeout(res, delayBetweenFilesMs))
         }
       }
       // After all files in job are sent and confirmed, rotate backup dirs
-      try {
-        await axios.post(`${job.serverUrl}/rotate-backup-dirs`, {
-          senderServerName: job.senderServerName,
-          serviceName: job.serviceName,
-          rotationCount: job.rotationCount || 2
-        }, {
-          headers: {
-            Authorization: job.token || config.token,
-            'Content-Type': 'application/json'
-          }
-        });
-        logToFile(`Backup rotation triggered for ${job.senderServerName}/${job.serviceName}`);
-      } catch (e) {
-        logToFile(`Failed to rotate backup dirs for ${job.senderServerName}/${job.serviceName}: ${e.message}`);
+      if (!serverUnavailableRef.value) {
+        try {
+          await axios.post(`${job.serverUrl}/rotate-backup-dirs`, {
+            senderServerName: job.senderServerName,
+            serviceName: job.serviceName,
+            rotationCount: job.rotationCount || 2
+          }, {
+            headers: {
+              Authorization: job.token || config.token,
+              'Content-Type': 'application/json'
+            }
+          })
+          logToFile(`Backup rotation triggered for ${job.senderServerName}/${job.serviceName}`)
+        } catch (e) {
+          logToFile(`Failed to rotate backup dirs for ${job.senderServerName}/${job.serviceName}: ${e.message}`)
+        }
       }
     } else if (job.archive && Array.isArray(job.archive.include)) {
       // Archive multiple folders/files with exclusions
@@ -373,10 +407,12 @@ async function main() {
       const serverName = job.senderServerName || 'unknown'
       const serviceName = job.serviceName || 'unknown'
       let msg = ''
-      if (!jobFailed) {
-        msg = `✅ <b>Backup Job Completed Successfully!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files sent:</b> <b>${files.length}</b>\n\n<i>All files have been successfully delivered to the server.</i>`
+      if (serverUnavailableRef.value) {
+        msg = `🚨 <b>Backup server not available anymore</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files transferred:</b> <b>${filesTransferred}</b>\n<b>Files not transferred:</b> <b>${filesNotTransferred}</b>\n\n<i>Backup server became unavailable during transfer. Please check server status.</i>`
+      } else if (!jobFailed) {
+        msg = `✅ <b>Backup Job Completed Successfully!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files sent:</b> <b>${filesTransferred}</b>\n\n<i>All files have been successfully delivered to the server.</i>`
       } else {
-        msg = `🚨 <b>Backup Job Failed!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files processed:</b> <b>${files.length}</b>\n\n<i>Error occurred while sending one or more files.</i>`
+        msg = `🚨 <b>Backup Job Failed!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files processed:</b> <b>${filesTransferred + filesNotTransferred}</b>\n\n<i>Error occurred while sending one or more files.</i>`
       }
       await sendTelegramMessage(msg, telegramConfig.botToken, telegramConfig.chatId)
     }
