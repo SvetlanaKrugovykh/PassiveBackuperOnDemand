@@ -1,4 +1,57 @@
 const archiver = require('archiver')
+const os = require('os')
+
+// Safely copy a file (even if locked), creating a snapshot copy
+async function safelyCopyLiveFile(sourcePath, destDir = null) {
+  const tempDir = destDir || path.join(os.tmpdir(), 'backup_staging')
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true })
+  }
+  const fileName = path.basename(sourcePath)
+  const destPath = path.join(tempDir, fileName)
+  logToFile(`Creating safe copy of ${sourcePath} to ${destPath}...`)
+  return new Promise((resolve, reject) => {
+    const readStream = fs.createReadStream(sourcePath, {
+      highWaterMark: 64 * 1024 * 1024,
+      flags: 'r'
+    })
+    const writeStream = fs.createWriteStream(destPath, {
+      highWaterMark: 64 * 1024 * 1024
+    })
+    let copiedBytes = 0
+    readStream.on('data', (chunk) => {
+      copiedBytes += chunk.length
+    })
+    readStream.on('error', (err) => {
+      writeStream.destroy()
+      try { fs.unlinkSync(destPath) } catch {}
+      reject(new Error(`Failed to read source file: ${err.message}`))
+    })
+    writeStream.on('error', (err) => {
+      readStream.destroy()
+      try { fs.unlinkSync(destPath) } catch {}
+      reject(new Error(`Failed to write copy: ${err.message}`))
+    })
+    writeStream.on('finish', () => {
+      logToFile(`Safe copy created: ${destPath} (${copiedBytes} bytes)`)
+      resolve(destPath)
+    })
+    readStream.pipe(writeStream)
+  })
+}
+
+// Delete temporary staging copy
+function cleanupStagingCopy(filePath) {
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath)
+      logToFile(`Staging copy deleted: ${filePath}`)
+    }
+  } catch (err) {
+    logToFile(`Failed to delete staging copy ${filePath}: ${err.message}`)
+  }
+}
+
 // Archive file or folders to zip, returns path to archive
 function zipFile(inputPath) {
   return new Promise((resolve, reject) => {
@@ -148,131 +201,147 @@ function findFilesByPatterns(directory, patterns, dateModes = ['today', 'yesterd
 }
 
 async function sendFileJob(job, telegramConfig, serverUnavailableRef) {
-  const {
-    file,
-    serverUrl,
-    senderServerName,
-    serviceName,
-    chunkSize = 52428800,
-    maxRetries = 3,
-    delayBetweenChunksMs = 0
-  } = job
-  // Use job.token if present, otherwise use config.token
-  const config = loadConfig()
-  const token = job.token || config.token
-  if (!fs.existsSync(file)) {
-    logToFile(`File not found: ${file}`)
-    return
-  }
-  logToFile(`Start sending file: ${file}`)
-  const stat = fs.statSync(file)
-  const fileSize = stat.size
-  const numChunks = Math.ceil(fileSize / chunkSize)
-  const fileName = path.basename(file)
-  // Calculate sha256 for the file using streaming (do not load entire file into memory)
-  logToFile(`Calculating sha256 for large file...`)
-  const hashStream = crypto.createHash('sha256')
-  await new Promise((resolve, reject) => {
-    const s = fs.createReadStream(file)
-    s.on('data', chunk => hashStream.update(chunk))
-    s.on('end', resolve)
-    s.on('error', reject)
-  })
-  const hash = hashStream.digest('hex')
-  logToFile(`File ${file} sha256: ${hash}`)
-  logToFile(`File size: ${fileSize} bytes, chunks: ${numChunks}`)
-  const readStream = fs.createReadStream(file, { highWaterMark: chunkSize })
-  let chunkId = 1
-  let failed = false
-  for await (const chunk of readStream) {
-    if (serverUnavailableRef && serverUnavailableRef.value) {
-          logToFile(`Server already marked as unavailable, skipping file: ${fileName}`)
-      failed = true
-      break
+  const originalFile = job.file
+  let fileToSend = originalFile
+  let isTemporaryCopy = false
+
+  try {
+    // If preCopyFile is enabled, create a staging copy first
+    if (job.preCopyFile === true) {
+      logToFile(`Pre-copying live file: ${originalFile}`)
+      const stagingDir = job.stagingDirectory || path.join(os.tmpdir(), 'backup_staging')
+      fileToSend = await safelyCopyLiveFile(originalFile, stagingDir)
+      isTemporaryCopy = true
+      logToFile(`Using staging copy for transfer: ${fileToSend}`)
     }
-    const b64 = chunk.toString('base64')
-    const data = {
-      fileName,
-      chunkId: Number(chunkId), // ensure integer
-      numChunks,
-      content: b64,
+
+    const {
+      serverUrl,
       senderServerName,
       serviceName,
-      sha256: hash
+      chunkSize = 52428800,
+      maxRetries = 3,
+      delayBetweenChunksMs = 0
+    } = job
+    // Use job.token if present, otherwise use config.token
+    const config = loadConfig()
+    const token = job.token || config.token
+    if (!fs.existsSync(fileToSend)) {
+      throw new Error(`File not found: ${fileToSend}`)
     }
-    if (delayBetweenChunksMs && delayBetweenChunksMs > 0) {
-      await new Promise(res => setTimeout(res, delayBetweenChunksMs))
-    }
-    let sent = false
-    let attempt = 0
-    while (!sent && attempt < maxRetries) {
-      try {
-        const resp = await axios.post(`${serverUrl}/upload-chunk`, data, {
-          headers: {
-            Authorization: token,
-            'Content-Type': 'application/json'
-          },
-          timeout: 300000 // 5 minutes per chunk
-        })
-        logToFile(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`)
-        console.log(`Sent chunk ${chunkId}/${numChunks} for ${fileName}`)
-        sent = true
-        chunkId++
-      } catch (e) {
-        attempt++
-        logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
-        console.error(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
-        if (attempt >= maxRetries) {
-          logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`)
-          failed = true
-
-          if (serverUnavailableRef) {
-            serverUnavailableRef.value = true
+    logToFile(`Start sending file: ${fileToSend}`)
+    const stat = fs.statSync(fileToSend)
+    const fileSize = stat.size
+    const numChunks = Math.ceil(fileSize / chunkSize)
+    const fileName = path.basename(originalFile)
+    // Calculate sha256 for the file using streaming (do not load entire file into memory)
+    logToFile(`Calculating sha256 for large file...`)
+    const hashStream = crypto.createHash('sha256')
+    await new Promise((resolve, reject) => {
+      const s = fs.createReadStream(fileToSend)
+      s.on('data', chunk => hashStream.update(chunk))
+      s.on('end', resolve)
+      s.on('error', reject)
+    })
+    const hash = hashStream.digest('hex')
+    logToFile(`File ${fileToSend} sha256: ${hash}`)
+    logToFile(`File size: ${fileSize} bytes, chunks: ${numChunks}`)
+    const readStream = fs.createReadStream(fileToSend, { highWaterMark: chunkSize })
+    let chunkId = 1
+    let failed = false
+    for await (const chunk of readStream) {
+      if (serverUnavailableRef && serverUnavailableRef.value) {
+        logToFile(`Server already marked as unavailable, skipping file: ${fileName}`)
+        failed = true
+        break
+      }
+      const b64 = chunk.toString('base64')
+      const data = {
+        fileName,
+        chunkId: Number(chunkId),
+        numChunks,
+        content: b64,
+        senderServerName,
+        serviceName,
+        sha256: hash
+      }
+      if (delayBetweenChunksMs && delayBetweenChunksMs > 0) {
+        await new Promise(res => setTimeout(res, delayBetweenChunksMs))
+      }
+      let sent = false
+      let attempt = 0
+      while (!sent && attempt < maxRetries) {
+        try {
+          const resp = await axios.post(`${serverUrl}/upload-chunk`, data, {
+            headers: {
+              Authorization: token,
+              'Content-Type': 'application/json'
+            },
+            timeout: 300000
+          })
+          logToFile(`Sent chunk ${chunkId}/${numChunks} for ${fileName}: ${resp.status}`)
+          console.log(`Sent chunk ${chunkId}/${numChunks} for ${fileName}`)
+          sent = true
+          chunkId++
+        } catch (e) {
+          attempt++
+          logToFile(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
+          console.error(`Error sending chunk ${chunkId} for ${fileName} (attempt ${attempt}): ${e.message}`)
+          if (attempt >= maxRetries) {
+            logToFile(`Failed to send chunk ${chunkId} for ${fileName} after ${maxRetries} attempts.`)
+            failed = true
+            if (serverUnavailableRef) {
+              serverUnavailableRef.value = true
+            }
+            if (telegramConfig.botToken && telegramConfig.chatId && (!serverUnavailableRef || !serverUnavailableRef.value)) {
+              await sendTelegramMessage(
+                '🚨 <b>File transfer failed</b>!\nClient <b>' + senderServerName + '</b> could not connect to the server for file <b>' + fileName + '</b>. Please check the server status.',
+                telegramConfig.botToken,
+                telegramConfig.chatId
+              )
+            }
+            return
           }
-
-          if (telegramConfig.botToken && telegramConfig.chatId && (!serverUnavailableRef || !serverUnavailableRef.value)) {
-            await sendTelegramMessage(
-              '🚨 <b>File transfer failed</b>!\nClient <b>' + senderServerName + '</b> could not connect to the server for file <b>' + fileName + '</b>. Please check the server status.',
-              telegramConfig.botToken,
-              telegramConfig.chatId
-            )
-          }
-          return
+          await new Promise(res => setTimeout(res, 1000 * attempt))
         }
-        await new Promise(res => setTimeout(res, 1000 * attempt)) // Exponential backoff
       }
     }
-  }
-  if (!failed && (!serverUnavailableRef || !serverUnavailableRef.value)) {
-    // Wait for server to confirm all chunks received
-    let assembled = false;
-    for (let attempt = 1; attempt <= 10; attempt++) {
-      try {
-        const resp = await axios.post(`${serverUrl}/assemble-status`, {
-          fileName,
-          numChunks,
-          senderServerName,
-          serviceName
-        }, {
-          headers: {
-            Authorization: token,
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000
-        });
-        if (resp.data && resp.data.ok) {
-          assembled = true;
-          break;
+    if (!failed && (!serverUnavailableRef || !serverUnavailableRef.value)) {
+      // Wait for server to confirm all chunks received
+      let assembled = false
+      for (let attempt = 1; attempt <= 10; attempt++) {
+        try {
+          const resp = await axios.post(`${serverUrl}/assemble-status`, {
+            fileName,
+            numChunks,
+            senderServerName,
+            serviceName
+          }, {
+            headers: {
+              Authorization: token,
+              'Content-Type': 'application/json'
+            },
+            timeout: 10000
+          })
+          if (resp.data && resp.data.ok) {
+            assembled = true
+            break
+          }
+        } catch (e) {
+          // ignore
         }
-      } catch (e) {
-        // ignore
+        await new Promise(res => setTimeout(res, 2000))
       }
-      await new Promise(res => setTimeout(res, 2000));
+      if (assembled) {
+        logToFile(`File ${fileName} sent successfully and confirmed!`)
+      } else {
+        logToFile(`File ${fileName} sent, but server confirmation pending.`)
+      }
     }
-    if (assembled) {
-      logToFile(`File ${file} sent and all chunks confirmed on server!`)
-    } else {
-      logToFile(`File ${file} sent, but server did not confirm all chunks after waiting.`)
+  } finally {
+    // Always cleanup staging copy after transfer (success or failure)
+    if (isTemporaryCopy && fileToSend !== originalFile) {
+      cleanupStagingCopy(fileToSend)
     }
   }
 }
