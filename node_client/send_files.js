@@ -142,6 +142,7 @@ function getDateStr(offset = 0, format = 'yyyy_mm_dd') {
 
 function findFilesByPatterns(directory, patterns, dateModes = ['today', 'yesterday'], recursive = false) {
   let files = []
+  let actualMode = null
   if (!Array.isArray(patterns)) patterns = [patterns]
   if (!Array.isArray(dateModes)) dateModes = [dateModes]
   function walk(dir) {
@@ -174,6 +175,18 @@ function findFilesByPatterns(directory, patterns, dateModes = ['today', 'yesterd
       fileList = []
     }
   }
+  
+  // Handle hybrid mode 'today/yesterday'
+  let modesToProcess = []
+  let isHybridMode = false
+  
+  if (dateModes.length === 1 && dateModes[0] === 'today/yesterday') {
+    isHybridMode = true
+    modesToProcess = ['today', 'yesterday']
+  } else {
+    modesToProcess = dateModes
+  }
+  
   for (const pattern of patterns) {
     let dateFormat = 'yyyy_mm_dd'
     let patternTemplate = pattern
@@ -182,22 +195,36 @@ function findFilesByPatterns(directory, patterns, dateModes = ['today', 'yesterd
       if (dateMatch[1]) dateFormat = dateMatch[1]
       patternTemplate = pattern.replace(/\{date(?::[^}]+)?}/, '{date}')
     }
-    for (const mode of dateModes) {
+    
+    for (const mode of modesToProcess) {
       let offset = 0
       if (mode === 'yesterday') offset = -1
       if (mode === 'today') offset = 0
       const dateStr = getDateStr(offset, dateFormat)
       const mask = patternTemplate.replace('{date}', dateStr)
-      const regex = new RegExp('^' + mask.replace(/\./g, '\.').replace(/\*/g, '.*') + '$')
+      const regex = new RegExp('^' + mask.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$')
+      
+      let foundForThisMode = []
       for (const filePath of fileList) {
         const fileName = path.basename(filePath)
         if (regex.test(fileName)) {
-          files.push(filePath)
+          foundForThisMode.push(filePath)
         }
       }
+      
+      if (foundForThisMode.length > 0) {
+        files = files.concat(foundForThisMode)
+        if (!actualMode) actualMode = mode
+        // In hybrid mode, stop after first successful match (today or yesterday)
+        if (isHybridMode) break
+      }
     }
+    // In hybrid mode, stop after finding files for any pattern
+    if (isHybridMode && files.length > 0) break
   }
-  return [...new Set(files)]
+  
+  const uniqueFiles = [...new Set(files)]
+  return { files: uniqueFiles, actualMode: actualMode || (modesToProcess.length > 0 ? modesToProcess[0] : 'today') }
 }
 
 async function sendFileJob(job, telegramConfig, serverUnavailableRef) {
@@ -375,12 +402,19 @@ async function main() {
       }
     }
     // If patterns (or pattern) and directory are specified - search files by masks with dateMode support
+    let actualDateMode = null
     if ((job.patterns || job.pattern) && job.directory) {
       const patterns = job.patterns || job.pattern
       const dateModes = job.dateMode || ['today', 'yesterday']
       const recursive = job.recursive === true
-      files = findFilesByPatterns(job.directory, patterns, dateModes, recursive)
-      logToFile(`Found ${files.length} files for job in directory ${job.directory}${recursive ? ' (recursive)' : ''}`)
+      const result = findFilesByPatterns(job.directory, patterns, dateModes, recursive)
+      files = result.files
+      actualDateMode = result.actualMode
+      
+      const isHybridMode = dateModes === 'today/yesterday' || (Array.isArray(dateModes) && dateModes.length === 1 && dateModes[0] === 'today/yesterday')
+      const usedFallback = isHybridMode && actualDateMode === 'yesterday'
+      
+      logToFile(`Found ${files.length} files for job in directory ${job.directory}${recursive ? ' (recursive)' : ''}${usedFallback ? ' (used yesterday fallback)' : ''}`)
       if (files.length === 0) {
         logToFile(`No files found for backup job in directory ${job.directory}${recursive ? ' (recursive)' : ''}. Job not completed.`)
         if (telegramConfig.botToken && telegramConfig.chatId) {
@@ -475,13 +509,18 @@ async function main() {
     if (telegramConfig.botToken && telegramConfig.chatId) {
       const serverName = job.senderServerName || 'unknown'
       const serviceName = job.serviceName || 'unknown'
+      const dateModes = job.dateMode || ['today', 'yesterday']
+      const isHybridMode = dateModes === 'today/yesterday' || (Array.isArray(dateModes) && dateModes.length === 1 && dateModes[0] === 'today/yesterday')
+      const usedFallback = isHybridMode && actualDateMode === 'yesterday'
+      const fallbackNote = usedFallback ? '\n\n⚠️ <i>Note: Files from yesterday were used (no files found for today).</i>' : ''
+      
       let msg = ''
       if (serverUnavailableRef.value) {
-        msg = `🚨 <b>Backup server not available anymore</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files transferred:</b> <b>${filesTransferred}</b>\n<b>Files not transferred:</b> <b>${filesNotTransferred}</b>\n\n<i>Backup server became unavailable during transfer. Please check server status.</i>`
+        msg = `🚨 <b>Backup server not available anymore</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files transferred:</b> <b>${filesTransferred}</b>\n<b>Files not transferred:</b> <b>${filesNotTransferred}</b>${fallbackNote}\n\n<i>Backup server became unavailable during transfer. Please check server status.</i>`
       } else if (!jobFailed) {
-        msg = `✅ <b>Backup Job Completed Successfully!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files sent:</b> <b>${filesTransferred}</b>\n\n<i>All files have been successfully delivered to the server.</i>`
+        msg = `✅ <b>Backup Job Completed Successfully!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files sent:</b> <b>${filesTransferred}</b>${fallbackNote}\n\n<i>All files have been successfully delivered to the server.</i>`
       } else {
-        msg = `🚨 <b>Backup Job Failed!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files processed:</b> <b>${filesTransferred + filesNotTransferred}</b>\n\n<i>Error occurred while sending one or more files.</i>`
+        msg = `🚨 <b>Backup Job Failed!</b>\n\n<b>Server:</b> <code>${serverName}</code>\n<b>Service:</b> <code>${serviceName}</code>\n<b>Files processed:</b> <b>${filesTransferred + filesNotTransferred}</b>${fallbackNote}\n\n<i>Error occurred while sending one or more files.</i>`
       }
       await sendTelegramMessage(msg, telegramConfig.botToken, telegramConfig.chatId)
     }
