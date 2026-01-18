@@ -1,19 +1,19 @@
-# Примеры использования режима dateMode
+# dateMode Usage Examples
 
-## Гибридный режим `today/yesterday`
+## Hybrid Mode `today/yesterday`
 
-Новый режим позволяет автоматически переключаться с поиска файлов за сегодня на вчерашние, если за сегодня ничего не найдено.
+This new mode automatically switches from searching for today's files to yesterday's files if nothing is found for today.
 
-### Как работает
+### How It Works
 
-1. **Сначала** ищет файлы за сегодняшнюю дату
-2. **Если найдены** — отправляет их, работает как обычный режим `today`
-3. **Если НЕ найдены** — автоматически ищет файлы за вчерашнюю дату
-4. **Уведомление в Telegram** — если сработал fallback на yesterday, в сообщении появится предупреждение
+1. **First** searches for files with today's date
+2. **If found** — sends them, works like regular `today` mode
+3. **If NOT found** — automatically searches for files with yesterday's date
+4. **Telegram notification** — if fallback to yesterday occurs, a warning appears in the message
 
-### Примеры конфигурации
+### Configuration Examples
 
-#### Пример 1: Простой гибридный режим
+#### Example 1: Simple Hybrid Mode
 ```json
 {
   "pattern": "backup_{date}.zip",
@@ -26,7 +26,7 @@
 }
 ```
 
-#### Пример 2: С кастомным форматом даты
+#### Example 2: Custom Date Format
 ```json
 {
   "pattern": "db_dump_{date:yyyy-mm-dd}.sql",
@@ -39,7 +39,7 @@
 }
 ```
 
-#### Пример 3: Рекурсивный поиск с гибридным режимом
+#### Example 3: Recursive Search with Hybrid Mode
 ```json
 {
   "patterns": ["*.log", "*.txt"],
@@ -53,41 +53,41 @@
 }
 ```
 
-## Сравнение режимов
+## Mode Comparison
 
-### Стандартный режим `["today", "yesterday"]`
+### Standard Mode `["today", "yesterday"]`
 ```json
 {
   "dateMode": ["today", "yesterday"]
 }
 ```
-- Ищет файлы за **оба** дня
-- Отправляет **все найденные** файлы (и today, и yesterday)
-- Не показывает, какие файлы за какой день
+- Searches for files from **both** days
+- Sends **all found** files (both today and yesterday)
+- Does not indicate which files are from which day
 
-### Гибридный режим `"today/yesterday"`
+### Hybrid Mode `"today/yesterday"`
 ```json
 {
   "dateMode": "today/yesterday"
 }
 ```
-- Ищет файлы **только за today**
-- Если не нашел — ищет **только за yesterday**
-- Отправляет файлы **только за один** день
-- В Telegram уведомлении показывает, если сработал fallback
+- Searches for files **only from today**
+- If not found — searches **only from yesterday**
+- Sends files from **only one** day
+- Telegram notification shows if fallback occurred
 
-### Только сегодня `["today"]`
+### Today Only `["today"]`
 ```json
 {
   "dateMode": ["today"]
 }
 ```
-- Ищет файлы **только за today**
-- Если не нашел — **ничего не отправляет**
+- Searches for files **only from today**
+- If not found — **sends nothing**
 
-## Примеры Telegram-уведомлений
+## Telegram Notification Examples
 
-### Когда найдены файлы за сегодня
+### When Today's Files Are Found
 ```
 ✅ Backup Job Completed Successfully!
 
@@ -98,7 +98,7 @@ Files sent: 3
 All files have been successfully delivered to the server.
 ```
 
-### Когда сработал fallback на yesterday
+### When Fallback to Yesterday Occurred
 ```
 ✅ Backup Job Completed Successfully!
 
@@ -111,7 +111,7 @@ Files sent: 2
 All files have been successfully delivered to the server.
 ```
 
-### Когда файлы не найдены вообще
+### When No Files Are Found
 ```
 ⚠️ Backup Job Not Completed
 
@@ -122,22 +122,22 @@ Files found: 0
 No files found for backup job. Job not completed.
 ```
 
-## Когда использовать гибридный режим
+## When to Use Hybrid Mode
 
-### ✅ Используйте `today/yesterday`:
-- Когда файлы могут создаваться с задержкой
-- Когда важно иметь хотя бы последний доступный бэкап
-- Когда нужно знать, за какой день реально отправлены файлы
-- Для критичных ежедневных бэкапов
+### ✅ Use `today/yesterday`:
+- When files may be created with delays
+- When it's important to have at least the latest available backup
+- When you need to know which day's files were actually sent
+- For critical daily backups
 
-### ❌ НЕ используйте `today/yesterday`:
-- Когда нужны файлы строго за сегодня
-- Когда нужны файлы за оба дня одновременно
-- Когда важно избежать дублирования при повторном запуске
+### ❌ DO NOT use `today/yesterday`:
+- When you need files strictly from today
+- When you need files from both days simultaneously
+- When avoiding duplication on repeated runs is important
 
-## Логирование
+## Logging
 
-В логах будет видно, когда сработал fallback:
+Logs will show when fallback occurred:
 
 ```
 [2026-01-18T10:00:00.000Z] Found 0 files for job in directory C:/Backups/
