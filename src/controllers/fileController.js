@@ -39,18 +39,21 @@ const fs = require('fs')
 const path = require('path')
 // Directory rotation: grandfather-father-son backup scheme
 function rotateBackupDirs(baseDir, rotationCount) {
-  // rotationCount: 2 (father-son), 3 (grandfather-father-son), ...
+  // rotationCount: 2 → keep dirs 1,2; 3 → keep dirs 1,2,3; etc.
+  // After rotation, dir '0' should not exist (moved to '1')
+  
+  // Step 1: Remove oldest backup (rotationCount directory)
+  const oldestDir = path.join(baseDir, rotationCount.toString())
+  if (fs.existsSync(oldestDir)) {
+    fs.rmSync(oldestDir, { recursive: true, force: true })
+  }
+  
+  // Step 2: Shift all backups: (rotationCount-1)→rotationCount, ..., 1→2, 0→1
   for (let i = rotationCount - 1; i >= 0; i--) {
     const dir = path.join(baseDir, i.toString())
     if (fs.existsSync(dir)) {
-      if (i === rotationCount - 1) {
-        // Oldest backup — remove
-        fs.rmSync(dir, { recursive: true, force: true })
-      } else {
-        // Shift other backups up
-        const nextDir = path.join(baseDir, (i + 1).toString())
-        fs.renameSync(dir, nextDir)
-      }
+      const nextDir = path.join(baseDir, (i + 1).toString())
+      fs.renameSync(dir, nextDir)
     }
   }
   // After rotation, directory '0' is ready for new upload
