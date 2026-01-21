@@ -491,8 +491,10 @@ async function main() {
       files = [archivePath]
       try {
         await sendFileJob({ ...job, file: archivePath }, telegramConfig)
+        filesTransferred++
       } catch (e) {
         jobFailed = true
+        filesNotTransferred++
       }
       try { fs.unlinkSync(archivePath) } catch {}
     } else if (job.file) {
@@ -501,8 +503,10 @@ async function main() {
       files = [job.file]
       try {
         await sendFileJob(job, telegramConfig)
+        filesTransferred++
       } catch (e) {
         jobFailed = true
+        filesNotTransferred++
       }
     }
     // Send Telegram notification about job completion
