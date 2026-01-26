@@ -27,18 +27,18 @@ svc.on('install', () => {
   console.log(`✓ Service "${SERVICE_NAME}" installed successfully!`)
   
   try {
-    // Настраиваем автозапуск и зависимость от frp-client
+    // Configure automatic startup and dependency on frp-client
     console.log(`Setting up automatic startup and dependency on "${DEPENDENCY_SERVICE}"...`)
     
-    // Устанавливаем автозапуск
+    // Set automatic startup
     execSync(`sc config ${SERVICE_NAME} start= auto`, { encoding: 'utf8' })
     console.log('✓ Automatic startup configured')
     
-    // Добавляем зависимость от frp-client
+    // Add dependency on frp-client
     execSync(`sc config ${SERVICE_NAME} depend= ${DEPENDENCY_SERVICE}`, { encoding: 'utf8' })
     console.log(`✓ Dependency on "${DEPENDENCY_SERVICE}" configured`)
     
-    // Устанавливаем задержку автозапуска для надежности
+    // Set delayed auto-start for reliability
     execSync(`sc config ${SERVICE_NAME} DelayedAutostart= yes`, { encoding: 'utf8' })
     console.log('✓ Delayed auto-start configured (starts after frp-client)')
     
