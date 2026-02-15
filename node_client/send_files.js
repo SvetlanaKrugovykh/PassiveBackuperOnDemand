@@ -428,9 +428,16 @@ async function main() {
       for (let i = 0; i < files.length; i++) {
         let file = files[i];
         let fileToSend = file;
+        let createdZipInCatalog = false
         // zip support
         if (job.zip) {
           fileToSend = await zipFile(file);
+          if (job.zip_catalog && typeof job.zip_catalog === 'string') {
+            const zipBase = require('path').basename(fileToSend);
+            if (fileToSend.startsWith(job.zip_catalog) && /^backup_\d+\.zip$/.test(zipBase)) {
+              createdZipInCatalog = true;
+            }
+          }
         }
         if (serverUnavailableRef.value) {
           filesNotTransferred += (files.length - i)
@@ -455,8 +462,7 @@ async function main() {
           filesNotTransferred += (files.length - i - 1)
           break
         }
-        // optionally, remove zip after send
-        if (job.zip) {
+        if (job.zip && createdZipInCatalog) {
           try { fs.unlinkSync(fileToSend) } catch {}
         }
         if (delayBetweenFilesMs && delayBetweenFilesMs > 0 && i < files.length - 1) {
